@@ -10,7 +10,7 @@ async function startup({ id, version, rootURI }) {
   );
   const scope = { Zotero, Services, IOUtils, PathUtils, ChromeUtils, Components,
     fetch, XMLHttpRequest, TextDecoder, TextEncoder, URL, setTimeout, clearTimeout };
-  Services.scriptloader.loadSubScript(rootURI + "content/host.js", scope);
+  Services.scriptloader.loadSubScript(rootURI + "content/host.js?v=" + encodeURIComponent(version), scope);
   plugin = scope.PaperLensHost.createPlugin({ id, version, rootURI });
   Zotero.PaperLens = plugin;
   await plugin.start();

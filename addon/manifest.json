@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "PaperLens",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "在 Zotero 中理解论文、逐段精读与核对证据。",
   "author": "DreamPerday",
   "homepage_url": "https://github.com/DreamPerday/PaperLens-Zotero",

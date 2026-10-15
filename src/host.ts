@@ -7,6 +7,7 @@ import type { Bridge, Quote } from './types';
 const HTML = 'http://www.w3.org/1999/xhtml';
 
 export function createPlugin(info: { id: string; version: string; rootURI: string }) {
+  const sidebarURL = `chrome://paperlens/content/sidebar.xhtml?v=${encodeURIComponent(info.version)}`;
   const storage = new Storage();
   const ai = new AIClient();
   const views = new Map<HTMLElement, { controller: ReaderController; frame: HTMLIFrameElement; unmount?: () => void }>();
@@ -39,7 +40,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       };
       frame.addEventListener('load', ready);
       frame.addEventListener('paperlens-ui-ready', ready);
-      frame.src = 'chrome://paperlens/content/sidebar.xhtml';
+      frame.src = sidebarURL;
       body.style.cssText = 'padding:0;min-width:0;' + (explicitReader ? 'flex:1;min-height:0;overflow:hidden;' : '');
       body.append(frame);
     }
@@ -208,7 +209,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       doc.defaultView?.addEventListener('unload', cleanup, { once: true });
       frame.addEventListener('load', ready);
       frame.addEventListener('paperlens-ui-ready', ready);
-      frame.src = 'chrome://paperlens/content/sidebar.xhtml'; body.replaceChildren(frame); preferenceFrames.set(frame, cleanup);
+      frame.src = sidebarURL; body.replaceChildren(frame); preferenceFrames.set(frame, cleanup);
     },
     async stop() {
       Zotero.Reader.unregisterEventListener('renderTextSelectionPopup', selectionListener);

@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import ReactMarkdown from 'react-markdown';
-import rehypeKatex from 'rehype-katex';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
+import { Markdown } from './markdown';
+import { ModelSwitcher } from './model-switcher';
 import type { Bridge, Message, Settings, Task, ViewState } from '../types';
 import './style.css';
 
@@ -13,35 +11,6 @@ const tasks: { id: Task; label: string; description: string; action: string }[] 
   { id: 'overview', label: '概览', description: '梳理论文的研究问题、方法、结果与局限，每个要点关联原文。', action: '生成概览' },
   { id: 'verify', label: '证据核对', description: '把一个具体主张和论文原文对照，判断支持程度、限制和适用条件。', action: '开始核对' },
 ];
-
-function normalizeMath(markdown: string) {
-  const value = markdown
-    .replace(/\\\[/g, () => '$$').replace(/\\\]/g, () => '$$')
-    .replace(/\\\(/g, '$').replace(/\\\)/g, '$')
-    .replace(/\\begin\{(?:equation|equation\*)\}/g, () => '$$')
-    .replace(/\\end\{(?:equation|equation\*)\}/g, () => '$$');
-  return value.replace(/(^|\n)[ \t]*\$\$[ \t]*([^\n]+?)[ \t]*\$\$[ \t]*(?=\n|$)/g,
-    (_match, prefix, formula) => prefix + '$$\n' + formula + '\n$$');
-}
-
-function ModelSwitcher({ bridge, state, action }: { bridge: Bridge; state: ViewState; action: (work: () => Promise<void>) => Promise<void> }) {
-  const options = state.models.filter(model => model !== state.model);
-  return <details className="model-switcher" onToggle={event => {
-    const details = event.currentTarget as HTMLDetailsElement;
-    if (details.open && !state.models.length && !state.modelsLoading) void action(() => bridge.refreshModels());
-  }}>
-    <summary title="在阅读侧栏中快速切换模型"><span>模型</span><strong>{state.model || '未配置'}</strong></summary>
-    <div className="model-menu">
-      <label>当前模型<select aria-label="快速切换 AI 模型" value={state.model} disabled={state.modelsLoading || !state.models.length} onChange={event => void action(() => bridge.setModel(event.target.value))}>
-        {!state.model && <option value="">未选择模型</option>}
-        {state.model && <option value={state.model}>{state.model}</option>}
-        {options.map(model => <option key={model} value={model}>{model}</option>)}
-      </select></label>
-      <div className="model-menu-actions"><button className="text-button" disabled={state.modelsLoading} onClick={() => void action(() => bridge.refreshModels())}>{state.modelsLoading ? '获取中…' : '刷新模型列表'}</button><button className="text-button" onClick={() => bridge.openSettings()}>连接设置</button></div>
-      {!state.models.length && <p className="field-help">打开菜单后获取服务公布的模型；也可以在连接设置中手动填写模型 ID。</p>}
-    </div>
-  </details>;
-}
 
 function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void }) {
   const [settings, setSettings] = useState<Settings>();
@@ -136,7 +105,7 @@ function App({ bridge }: { bridge: Bridge }) {
     void action(() => bridge.send(draft));
   };
   const renderAnswer = (message: Message) => <div className="answer" key={message.id}>
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]} components={{
+    <Markdown components={{
       a: ({ href, children }) => {
         const match = href?.match(/^#source-(b\d+)$/);
         if (match && message.sourceIds?.includes(match[1])) {
@@ -145,7 +114,7 @@ function App({ bridge }: { bridge: Bridge }) {
         }
         return href ? <a href={href} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>;
       },
-    }}>{normalizeMath(message.content)}</ReactMarkdown>
+    }}>{message.content}</Markdown>
     {!message.content && message.status === 'streaming' && <p className="muted" role="status">正在思考…</p>}
     {message.error && <p className="error" role="alert">{message.error}</p>}
     <div className="answer-meta">{message.model}{message.range && ` · ${message.range}`}</div>
@@ -157,7 +126,7 @@ function App({ bridge }: { bridge: Bridge }) {
     </div>}
   </div>;
   return <div className="app">
-    <header><div><strong>PaperLens</strong><p className="paper-title" title={state.title}>{state.title}</p></div><div className="header-actions"><ModelSwitcher bridge={bridge} state={state} action={action}/><button title="AI 连接与阅读设置" onClick={() => setSettingsOpen(true)}>设置</button>{bridge.closePanel && <button title="收起侧栏，可从阅读器工具栏重新打开" onClick={() => bridge.closePanel?.()}>收起</button>}</div></header>
+    <header><div className="header-top"><strong>PaperLens</strong><div className="header-actions"><ModelSwitcher bridge={bridge} state={state} onSettings={() => setSettingsOpen(true)}/><button className="header-button" title="AI 连接与阅读设置" onClick={() => setSettingsOpen(true)}>设置</button>{bridge.closePanel && <button className="header-button" title="收起侧栏，可从阅读器工具栏重新打开" onClick={() => bridge.closePanel?.()}>收起</button>}</div></div><p className="paper-title" title={state.title}>{state.title}</p></header>
     <nav aria-label="阅读任务">{tasks.map(t => <button key={t.id} aria-current={state.task === t.id ? 'page' : undefined} onClick={() => { bridge.setTask(t.id); setShowHistory(false); }}>{t.label}</button>)}</nav>
     <div className="toolbar"><span>{state.sourceInfo || (state.loading ? '正在读取原文…' : '从原文开始')}</span><div>{state.task === 'close' && !showHistory && messages.some(message => message.role === 'assistant') && <button className="text-button annotation-follow" aria-pressed={followAnnotations} title={followAnnotations ? '正文滚动时定位对应注解；点击暂停跟随' : '点击恢复跟随正文'} onClick={() => setFollowAnnotations(!followAnnotations)}>跟随正文</button>}<button className="text-button" onClick={() => setShowHistory(!showHistory)}>{showHistory ? '当前任务' : '历史'}</button><button className="text-button" disabled={state.busy || state.loading} onClick={() => action(() => bridge.refreshSource())}>重读原文</button></div></div>
     <div className="output" ref={output} onScroll={() => { const el = output.current!; follow.current = el.scrollHeight - el.clientHeight - el.scrollTop < 70; }}>

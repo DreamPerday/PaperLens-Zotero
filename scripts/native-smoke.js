@@ -41,6 +41,9 @@ assert(!Zotero.Prefs.get('extensions.paperlens.settings', true).includes(setting
 await c.bridge.newConversation();
 const focus = c.source.blocks.find(b => b.text.startsWith('To isolate'));
 const view = reader._internalReader._primaryView;
+// Trigger a fresh native popup even when the same passage was selected before a hot upgrade.
+view._setSelectionRanges(Components.utils.cloneInto([], reader._iframeWindow));
+await wait(() => ![...reader._iframeWindow.document.querySelectorAll('button')].some(b => b.textContent === '问 PaperLens'), 'Previous selection popup did not close');
 view._setSelectionRanges(Components.utils.cloneInto([{ pageIndex: 0, position: focus.location, text: focus.text,
   sortIndex: '00000|000000|00000', anchorOffset: 0, headOffset: 20 }], reader._iframeWindow));
 await wait(() => [...reader._iframeWindow.document.querySelectorAll('button')].some(b => b.textContent === '问 PaperLens'), 'Selection action missing');

@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -36,7 +36,16 @@ console.log(`Isolated profile: ${profile}\nSynthetic test data: ${data}\nTest co
 if (process.argv.includes('--launch')) {
   const flag = process.argv.indexOf('--zotero');
   const executable = flag >= 0 ? process.argv[flag + 1] : 'zotero';
+  const launchedAt = Date.now();
   const child = spawn(executable, ['-no-remote', '-profile', profile, '-start-debugger-server', '6101', '--remote-allow-system-access'], { detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
   console.log(`Started test Zotero, PID ${child.pid}`);
+  let ready = false;
+  while (Date.now() - launchedAt < 45000) {
+    try { ready = (await stat(join(bridge, 'ready.json'))).mtimeMs >= launchedAt; } catch {}
+    if (ready) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!ready) throw new Error('The isolated Zotero test harness did not become ready.');
+  console.log('Isolated test harness ready.');
 }
