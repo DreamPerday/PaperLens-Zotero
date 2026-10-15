@@ -15,6 +15,8 @@ export interface Session { identity: string; messages: Message[]; draft: string;
 export interface ViewState {
   title: string; identity: string; task: Task; quote?: Quote; messages: Message[]; draft: string;
   depth: Depth; hints: boolean; model: string; configured: boolean; readable: boolean; loading: boolean; busy: boolean;
+  models: string[]; modelsLoading: boolean;
+  activeSourceID?: string; activeMessageID?: string;
   error: string; notice: string; sourceInfo: string; returnAvailable: boolean;
 }
 export interface Bridge {
@@ -27,6 +29,7 @@ export interface Bridge {
   navigate(id: string, messageID?: string): Promise<void>; returnToReading(): Promise<void>;
   saveNote(id: string): Promise<void>; openNote(id: number): Promise<void>;
   newConversation(): Promise<void>; refreshSource(): Promise<void>; openSettings(): void;
+  refreshModels(): Promise<void>; setModel(model: string): Promise<void>;
   getSettings(): Promise<Settings>; saveSettings(settings: Settings): Promise<void>;
   models(settings: Settings): Promise<string[]>; testConnection(settings: Settings): Promise<string>;
   copy(text: string): void;

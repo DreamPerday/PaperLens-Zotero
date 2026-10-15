@@ -1,16 +1,47 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import type { Bridge, Message, Settings, Task, ViewState } from '../types';
 import './style.css';
 
 const tasks: { id: Task; label: string; description: string; action: string }[] = [
-  { id: 'chat', label: '问答', description: '选中一句话或一个段落，围绕不理解的地方自由追问。', action: '发送' },
-  { id: 'close', label: '精读', description: '像读注释一样理解选文：词句、概念、论证作用和段落联系。', action: '分析选文' },
+  { id: 'chat', label: '问答', description: '可以围绕选文提问，也可以直接询问论文中的概念、方法和结果。', action: '发送问题' },
+  { id: 'close', label: '注解', description: '对选文逐句注释；没有选文时，一键按段落生成全文注解。', action: '生成全文注解' },
   { id: 'overview', label: '概览', description: '梳理论文的研究问题、方法、结果与局限，每个要点关联原文。', action: '生成概览' },
-  { id: 'verify', label: '核对', description: '输入一个主张，或选中论文结论，核对证据和适用条件。', action: '核对主张' },
+  { id: 'verify', label: '证据核对', description: '把一个具体主张和论文原文对照，判断支持程度、限制和适用条件。', action: '开始核对' },
 ];
+
+function normalizeMath(markdown: string) {
+  const value = markdown
+    .replace(/\\\[/g, () => '$$').replace(/\\\]/g, () => '$$')
+    .replace(/\\\(/g, '$').replace(/\\\)/g, '$')
+    .replace(/\\begin\{(?:equation|equation\*)\}/g, () => '$$')
+    .replace(/\\end\{(?:equation|equation\*)\}/g, () => '$$');
+  return value.replace(/(^|\n)[ \t]*\$\$[ \t]*([^\n]+?)[ \t]*\$\$[ \t]*(?=\n|$)/g,
+    (_match, prefix, formula) => prefix + '$$\n' + formula + '\n$$');
+}
+
+function ModelSwitcher({ bridge, state, action }: { bridge: Bridge; state: ViewState; action: (work: () => Promise<void>) => Promise<void> }) {
+  const options = state.models.filter(model => model !== state.model);
+  return <details className="model-switcher" onToggle={event => {
+    const details = event.currentTarget as HTMLDetailsElement;
+    if (details.open && !state.models.length && !state.modelsLoading) void action(() => bridge.refreshModels());
+  }}>
+    <summary title="在阅读侧栏中快速切换模型"><span>模型</span><strong>{state.model || '未配置'}</strong></summary>
+    <div className="model-menu">
+      <label>当前模型<select aria-label="快速切换 AI 模型" value={state.model} disabled={state.modelsLoading || !state.models.length} onChange={event => void action(() => bridge.setModel(event.target.value))}>
+        {!state.model && <option value="">未选择模型</option>}
+        {state.model && <option value={state.model}>{state.model}</option>}
+        {options.map(model => <option key={model} value={model}>{model}</option>)}
+      </select></label>
+      <div className="model-menu-actions"><button className="text-button" disabled={state.modelsLoading} onClick={() => void action(() => bridge.refreshModels())}>{state.modelsLoading ? '获取中…' : '刷新模型列表'}</button><button className="text-button" onClick={() => bridge.openSettings()}>连接设置</button></div>
+      {!state.models.length && <p className="field-help">打开菜单后获取服务公布的模型；也可以在连接设置中手动填写模型 ID。</p>}
+    </div>
+  </details>;
+}
 
 function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void }) {
   const [settings, setSettings] = useState<Settings>();
@@ -57,16 +88,40 @@ function App({ bridge }: { bridge: Bridge }) {
   const [saving, setSaving] = useState<string>();
   const [copied, setCopied] = useState<string>();
   const [showHistory, setShowHistory] = useState(false);
+  const [followAnnotations, setFollowAnnotations] = useState(true);
   const [draft, setDraft] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const output = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  const lastAnnotationTarget = useRef<{ element: HTMLElement; sourceID: string; messageID: string }>();
   useEffect(() => bridge.subscribe(value => {
     setState(value); setDraft(value.draft);
   }), [bridge]);
-  useEffect(() => { setActionError(''); setShowHistory(false); setConfirmClear(false); follow.current = true; }, [state?.identity]);
-  useEffect(() => { if (follow.current && output.current) output.current.scrollTop = output.current.scrollHeight; }, [state?.messages.at(-1)?.content, state?.busy]);
+  useEffect(() => { setActionError(''); setShowHistory(false); setConfirmClear(false); setFollowAnnotations(true); follow.current = true; }, [state?.identity]);
+  useEffect(() => {
+    if (state?.task === 'close' && followAnnotations && state.activeSourceID && !showHistory) return;
+    if (follow.current && output.current) output.current.scrollTop = output.current.scrollHeight;
+  }, [state?.messages.at(-1)?.content, state?.busy]);
+  useEffect(() => {
+    const container = output.current;
+    if (settingsOpen || showHistory || !followAnnotations || state?.task !== 'close' || !container || !state.activeSourceID || !state.activeMessageID) {
+      lastAnnotationTarget.current = undefined;
+      return;
+    }
+    const matches = [...container.querySelectorAll<HTMLElement>('[data-source-id]')]
+      .filter(element => element.dataset.sourceId === state.activeSourceID && element.dataset.messageId === state.activeMessageID);
+    // Prefer the paragraph's own heading over references in other paragraphs.
+    const citation = matches.find(element => element.closest('h1,h2,h3,h4')) || matches[0];
+    const target = citation?.closest<HTMLElement>('h1,h2,h3,h4,p,li,blockquote') || citation;
+    const last = lastAnnotationTarget.current;
+    if (!target || target === last?.element && last.sourceID === state.activeSourceID && last.messageID === state.activeMessageID) return;
+    lastAnnotationTarget.current = { element: target, sourceID: state.activeSourceID, messageID: state.activeMessageID };
+    const bounds = container.getBoundingClientRect(), rect = target.getBoundingClientRect();
+    if (rect.top < bounds.top + 12 || rect.bottom > bounds.bottom - 12) {
+      container.scrollTop += rect.top - bounds.top - 16;
+    }
+  }, [state?.activeSourceID, state?.activeMessageID, state?.messages.at(-1)?.content, state?.task, settingsOpen, showHistory, followAnnotations]);
   const action = async (work: () => Promise<void>) => {
     setActionError(''); try { await work(); } catch (e) { setActionError(e instanceof Error ? e.message : String(e)); }
   };
@@ -74,20 +129,23 @@ function App({ bridge }: { bridge: Bridge }) {
   if (!state) return <p className="muted">正在打开 PaperLens…</p>;
   const task = tasks.find(t => t.id === state.task)!;
   const messages = showHistory ? state.messages : state.messages.filter(m => m.task === state.task);
-  const quoteNeeded = state.task === 'close' && !state.quote;
+  const annotationAction = state.task === 'close' && state.quote ? '分析选文' : task.action;
   const send = () => {
-    if (state.busy || state.loading || !state.readable || quoteNeeded || state.task === 'chat' && !draft.trim()) return;
+    if (state.busy || state.loading || !state.readable || state.task === 'chat' && !draft.trim()) return;
     follow.current = true;
     void action(() => bridge.send(draft));
   };
   const renderAnswer = (message: Message) => <div className="answer" key={message.id}>
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]} components={{
       a: ({ href, children }) => {
         const match = href?.match(/^#source-(b\d+)$/);
-        if (match && message.sourceIds?.includes(match[1])) return <button className="citation" onClick={() => action(() => bridge.navigate(match[1], message.id))}>{children}</button>;
-        return <span>{children}</span>;
+        if (match && message.sourceIds?.includes(match[1])) {
+          const active = state.activeSourceID === match[1] && state.activeMessageID === message.id;
+          return <button className={`citation${active ? ' source-active' : ''}`} data-source-id={match[1]} data-message-id={message.id} aria-current={active ? 'location' : undefined} onClick={() => action(() => bridge.navigate(match[1], message.id))}>{children}</button>;
+        }
+        return href ? <a href={href} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span>;
       },
-    }}>{message.content}</ReactMarkdown>
+    }}>{normalizeMath(message.content)}</ReactMarkdown>
     {!message.content && message.status === 'streaming' && <p className="muted" role="status">正在思考…</p>}
     {message.error && <p className="error" role="alert">{message.error}</p>}
     <div className="answer-meta">{message.model}{message.range && ` · ${message.range}`}</div>
@@ -99,13 +157,15 @@ function App({ bridge }: { bridge: Bridge }) {
     </div>}
   </div>;
   return <div className="app">
-    <header><div><strong>PaperLens</strong><p className="paper-title" title={state.title}>{state.title}</p></div><div className="header-actions"><button title="AI 连接与阅读设置" onClick={() => setSettingsOpen(true)}>设置</button>{bridge.closePanel && <button title="收起侧栏，可从阅读器工具栏重新打开" onClick={() => bridge.closePanel?.()}>收起</button>}</div></header>
+    <header><div><strong>PaperLens</strong><p className="paper-title" title={state.title}>{state.title}</p></div><div className="header-actions"><ModelSwitcher bridge={bridge} state={state} action={action}/><button title="AI 连接与阅读设置" onClick={() => setSettingsOpen(true)}>设置</button>{bridge.closePanel && <button title="收起侧栏，可从阅读器工具栏重新打开" onClick={() => bridge.closePanel?.()}>收起</button>}</div></header>
     <nav aria-label="阅读任务">{tasks.map(t => <button key={t.id} aria-current={state.task === t.id ? 'page' : undefined} onClick={() => { bridge.setTask(t.id); setShowHistory(false); }}>{t.label}</button>)}</nav>
-    <div className="toolbar"><span>{state.sourceInfo || (state.loading ? '正在读取原文…' : '从原文开始')}</span><div><button className="text-button" onClick={() => setShowHistory(!showHistory)}>{showHistory ? '当前任务' : '历史'}</button><button className="text-button" disabled={state.busy || state.loading} onClick={() => action(() => bridge.refreshSource())}>重读原文</button></div></div>
+    <div className="toolbar"><span>{state.sourceInfo || (state.loading ? '正在读取原文…' : '从原文开始')}</span><div>{state.task === 'close' && !showHistory && messages.some(message => message.role === 'assistant') && <button className="text-button annotation-follow" aria-pressed={followAnnotations} title={followAnnotations ? '正文滚动时定位对应注解；点击暂停跟随' : '点击恢复跟随正文'} onClick={() => setFollowAnnotations(!followAnnotations)}>跟随正文</button>}<button className="text-button" onClick={() => setShowHistory(!showHistory)}>{showHistory ? '当前任务' : '历史'}</button><button className="text-button" disabled={state.busy || state.loading} onClick={() => action(() => bridge.refreshSource())}>重读原文</button></div></div>
     <div className="output" ref={output} onScroll={() => { const el = output.current!; follow.current = el.scrollHeight - el.clientHeight - el.scrollTop < 70; }}>
       {!state.configured && <div className="setup"><strong>连接你的 AI 模型</strong><p>填写服务地址和模型，即可围绕论文提问。</p><button onClick={() => setSettingsOpen(true)}>配置 AI 服务</button></div>}
       {state.quote && state.task !== 'overview' && <blockquote className="quote"><div><span>当前选文 · 第 {state.quote.pageLabel} 页</span><button className="text-button" onClick={() => bridge.removeQuote()}>移除</button></div><p>{state.quote.text}</p><button className="text-button" onClick={() => action(() => bridge.navigate('selection'))}>定位选文</button></blockquote>}
       {messages.length === 0 && <div className="empty"><h2>{task.label === '问答' ? '读到哪里，就问到哪里' : task.label}</h2><p>{task.description}</p>
+      {state.task === 'close' && !state.quote && <div className="annotation-callout"><strong>全文注解</strong><p>按论文原文顺序解释每个段落的主旨、术语或公式、论证作用和段落关系。</p><button className="primary" disabled={!state.configured || !state.readable || state.loading || state.busy} onClick={send}>立即生成全文注解</button></div>}
+      {state.task === 'verify' && <div className="task-guide"><strong>证据核对看什么？</strong><p>输入一个可核对的具体主张，或选中论文中的结论。回答会先给出支持程度，再列出原文证据、限制和适用条件。</p><div className="verification-levels"><span>支持</span><span>部分支持</span><span>当前依据不足</span></div></div>}
       {state.hints && <div className="suggestions">{(state.task === 'chat' ? ['这句话是什么意思？', '为什么这样设计实验？', '这个结论有哪些限制？'] : state.task === 'verify' ? ['论文的实验能否支持这个结论？'] : []).map(text => <button key={text} onClick={() => { setDraft(text); bridge.setDraft(text); input.current?.focus(); }}>{text}</button>)}</div>}</div>}
       {showHistory && <div className="history-heading"><strong>本篇阅读记录</strong><button className="text-button" disabled={state.busy || !state.messages.length} onClick={() => setConfirmClear(!confirmClear)}>清空记录</button></div>}
       {confirmClear && <div className="confirm"><p>清空本篇的对话和分析记录？已保存的 Zotero 笔记会保留。</p><button onClick={() => setConfirmClear(false)}>取消</button><button onClick={() => action(async () => { await bridge.newConversation(); setConfirmClear(false); })}>清空本篇记录</button></div>}
@@ -116,11 +176,10 @@ function App({ bridge }: { bridge: Bridge }) {
       {actionError && <p className="error" role="alert">{actionError}</p>}
       {state.returnAvailable && <button className="return" onClick={() => action(() => bridge.returnToReading())}>← 返回阅读位置</button>}
     </div>
-    <div className="composer"><label htmlFor="paperlens-question">{state.task === 'chat' ? '继续追问' : state.task === 'verify' ? '要核对的主张（可编辑）' : '补充关注点（可选）'}</label>
-      <textarea ref={input} data-question="true" id="paperlens-question" rows={3} value={draft} placeholder={state.task === 'chat' ? '输入自己的问题…' : state.task === 'verify' ? '输入主张，或核对当前选文…' : '例如：重点解释实验设计…'} onChange={e => { setDraft(e.target.value); bridge.setDraft(e.target.value); }} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}/>
+    <div className="composer"><label htmlFor="paperlens-question">{state.task === 'chat' ? '继续追问' : state.task === 'verify' ? '要核对的主张（可编辑）' : state.task === 'close' && !state.quote ? '全文注解设置（可选）' : '补充关注点（可选）'}</label>
+      <textarea ref={input} data-question="true" id="paperlens-question" rows={3} value={draft} placeholder={state.task === 'chat' ? '输入自己的问题…' : state.task === 'verify' ? '输入主张，或核对当前选文…' : state.task === 'close' && !state.quote ? '无需选文，直接点击“生成全文注解”…' : '例如：重点解释实验设计…'} onChange={e => { setDraft(e.target.value); bridge.setDraft(e.target.value); }} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}/>
       <div className="composer-bottom"><label className="depth">解释深度<select aria-label="解释深度" value={state.depth} onChange={e => action(() => bridge.setDepth(e.target.value as Settings['depth']))}><option value="simple">简明</option><option value="standard">标准</option><option value="deep">深入</option></select></label>
-      {state.busy ? <button onClick={() => bridge.stop()}>停止生成</button> : <button className="primary" disabled={!state.configured || !state.readable || state.loading || quoteNeeded || state.task === 'chat' && !draft.trim() || state.task === 'verify' && !draft.trim() && !state.quote} onClick={send}>{task.action}</button>}</div>
-      {quoteNeeded && <p className="field-help">请在原文划选一段文字，点击“问 PaperLens”带入选文。</p>}
+      {state.busy ? <button onClick={() => bridge.stop()}>停止生成</button> : <button className="primary" disabled={!state.configured || !state.readable || state.loading || state.task === 'chat' && !draft.trim() || state.task === 'verify' && !draft.trim() && !state.quote} onClick={send}>{annotationAction}</button>}</div>
     </div>
     <footer aria-live="polite">{state.notice || (state.model ? `${state.model} · Ctrl/⌘ + Enter 发送` : '配置 AI 后开始阅读')}</footer>
   </div>;

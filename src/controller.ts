@@ -1,7 +1,8 @@
 import { AIClient } from './ai/client';
-import { buildMessages, chunkBlocks, groupSummaries, sourceText, SYSTEM } from './reading/context';
+import { ANNOTATION_FORMAT, buildMessages, chunkBlocks, groupSummaries, sourceText, SYSTEM } from './reading/context';
+import { locateBlock } from './reading/position';
 import { DEFAULT_SETTINGS, Storage } from './storage';
-import { extractSource, findReader, identityFor, navigateReader, openReader, readingPosition, saveNote } from './zotero-adapter';
+import { extractSource, findReader, identityFor, navigateReader, openReader, readingCursor, readingPosition, saveNote } from './zotero-adapter';
 import type { Bridge, Depth, Message, Quote, Session, Settings, Source, Task, ViewState } from './types';
 
 const taskQuestions: Record<Task, string> = {
@@ -20,7 +21,8 @@ export class ReaderController {
   item: any;
   settings: Settings = { ...DEFAULT_SETTINGS };
   state: ViewState = { title: 'PaperLens', identity: '', task: 'chat', messages: [], draft: '', depth: 'standard',
-    hints: true, model: '', configured: false, readable: false, loading: false, busy: false, error: '', notice: '', sourceInfo: '', returnAvailable: false };
+    hints: true, model: '', configured: false, readable: false, loading: false, busy: false, models: [], modelsLoading: false,
+    error: '', notice: '', sourceInfo: '', returnAvailable: false };
   private listeners = new Set<(state: ViewState) => void>();
   private abort?: AbortController;
   private loadID = 0;
@@ -28,12 +30,15 @@ export class ReaderController {
   private previousLocation: any;
   private saveTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
+  private availableModels: string[] = [];
+  private syncTimer: ReturnType<typeof setInterval>;
+  private navigationCursor?: ReturnType<typeof readingCursor>;
   readonly bridge: Bridge;
 
   constructor(readonly doc: Document, readonly storage: Storage, readonly ai: AIClient, private notifyAll: () => void) {
     this.bridge = {
       mode: 'reader', subscribe: listener => { this.listeners.add(listener); listener(this.snapshot()); return () => this.listeners.delete(listener); },
-      setTask: task => { this.state.task = task; if (this.session) this.session.task = task; this.persistDraft(); this.emit(); },
+      setTask: task => { this.state.task = task; if (this.session) this.session.task = task; if (task !== 'close') this.setActiveSource(); this.persistDraft(); this.emit(); },
       setDraft: text => { this.state.draft = text; if (this.session) this.session.draft = text; this.persistDraft(); },
       removeQuote: () => { this.state.quote = undefined; if (this.session) this.session.quote = undefined; this.persistDraft(); this.emit(); },
       setDepth: async depth => { this.settings = { ...await this.storage.getSettings(), depth }; await this.storage.saveSettings(this.settings); this.notifyAll(); },
@@ -44,24 +49,73 @@ export class ReaderController {
         if (ReaderController.requests.has(this.state.identity)) return;
         if (this.session) {
           this.session.messages = []; this.session.draft = ''; this.session.quote = undefined;
-          this.state.quote = undefined; this.state.draft = ''; await this.storage.saveSession(this.session); this.notifyAll();
+          this.state.quote = undefined; this.state.draft = ''; this.setActiveSource(); await this.storage.saveSession(this.session); this.notifyAll();
         }
       },
       refreshSource: () => this.load(this.item, this.reader, true), openSettings: () => Zotero.Utilities.Internal.openPreferences('paperlens-settings'),
+      refreshModels: () => this.refreshModels(), setModel: model => this.setModel(model),
       getSettings: () => storage.getSettings(), saveSettings: async settings => { await storage.saveSettings(settings); this.settings = { ...settings }; this.emit(); this.notifyAll(); },
       models: settings => ai.models(settings), testConnection: settings => ai.test(settings),
       copy: text => Components.classes['@mozilla.org/widget/clipboardhelper;1'].getService(Components.interfaces.nsIClipboardHelper).copyString(text),
     };
+    this.syncTimer = setInterval(() => this.syncAnnotationPosition(), 350);
   }
 
   private snapshot(): ViewState {
     return { ...this.state, messages: [...(this.session?.messages || [])],
       depth: this.settings.depth, hints: this.settings.hints, model: this.settings.model,
+      models: [...this.availableModels], modelsLoading: this.state.modelsLoading,
       configured: Boolean(this.settings.baseURL && this.settings.model), readable: Boolean(this.source),
       busy: ReaderController.requests.has(this.state.identity) };
   }
   emit() { if (!this.disposed) for (const listener of this.listeners) listener(this.snapshot()); }
+  private setActiveSource(sourceID?: string, messageID?: string) {
+    if (!sourceID) this.navigationCursor = undefined;
+    if (this.state.activeSourceID === sourceID && this.state.activeMessageID === messageID) return false;
+    this.state.activeSourceID = sourceID;
+    this.state.activeMessageID = messageID;
+    return true;
+  }
+  private syncAnnotationPosition() {
+    if (this.state.task !== 'close' || !this.source || !this.session || !this.reader || this.state.loading) {
+      if (this.setActiveSource()) this.emit();
+      return;
+    }
+    const cursor = readingCursor(this.reader);
+    const pinned = this.navigationCursor;
+    if (cursor && pinned && cursor.pageIndex === pinned.pageIndex && cursor.x === pinned.x && cursor.y === pinned.y &&
+        this.session.messages.some(message => message.id === this.state.activeMessageID && message.sourceVersion === this.source?.version)) return;
+    this.navigationCursor = undefined;
+    const block = cursor && locateBlock(this.source.blocks, cursor);
+    const message = block && [...this.session.messages].reverse().find(candidate =>
+      candidate.role === 'assistant' && candidate.task === 'close' && candidate.sourceVersion === this.source?.version &&
+      candidate.sourceIds?.includes(block.id) && candidate.content.includes('](#source-' + block.id + ')'));
+    if (this.setActiveSource(message ? block?.id : undefined, message?.id)) this.emit();
+  }
   async refreshSettings() { this.settings = await this.storage.getSettings(); this.emit(); }
+  async refreshModels() {
+    if (this.state.modelsLoading) return;
+    const settings = await this.storage.getSettings();
+    if (!settings.baseURL.trim()) throw new Error('请先配置 AI Base URL。');
+    this.state.modelsLoading = true; this.emit();
+    try {
+      this.availableModels = await this.ai.models(settings);
+      this.state.notice = `已加载 ${this.availableModels.length} 个模型。`;
+    } finally {
+      this.state.modelsLoading = false; this.emit();
+    }
+  }
+  async setModel(model: string) {
+    const value = model.trim();
+    if (!value || value === this.settings.model) return;
+    if (ReaderController.requests.has(this.state.identity)) throw new Error('请先停止当前回答，再切换模型。');
+    const settings = { ...await this.storage.getSettings(), model: value };
+    await this.storage.saveSettings(settings);
+    this.settings = settings;
+    if (!this.availableModels.includes(value)) this.availableModels = [value, ...this.availableModels];
+    this.state.notice = `已切换模型：${value}`;
+    this.emit(); this.notifyAll();
+  }
   private persistDraft() {
     clearTimeout(this.saveTimer);
     const session = this.session;
@@ -85,7 +139,7 @@ export class ReaderController {
     const id = ++this.loadID;
     this.item = item; this.reader = reader || findReader(this.doc, item.id); this.source = undefined; this.session = undefined;
     this.previousLocation = undefined;
-    this.state = { ...this.state, title: item.getField('title') || 'PDF', quote: undefined, draft: '', identity: identityFor(item), loading: true, busy: false, error: '', notice: '正在读取论文文字…', sourceInfo: '', returnAvailable: false };
+    this.state = { ...this.state, title: item.getField('title') || 'PDF', quote: undefined, draft: '', identity: identityFor(item), loading: true, busy: false, error: '', notice: '正在读取论文文字…', sourceInfo: '', returnAvailable: false, activeSourceID: undefined, activeMessageID: undefined };
     this.emit();
     try {
       const [session, settings] = await Promise.all([this.storage.session(identityFor(item)), this.storage.getSettings()]);
@@ -115,13 +169,13 @@ export class ReaderController {
 
   async send(text: string, task: Task = this.state.task, retryMessage?: Message) {
     if (!this.source || !this.session || ReaderController.requests.has(this.state.identity)) return;
-    if (task === 'close' && !this.state.quote) { this.fail(new Error('请先在 PDF 中选中需要精读的句子或段落。')); return; }
     if (task === 'verify' && !text.trim() && !this.state.quote) { this.fail(new Error('请输入要核对的主张，或在原文中选中结论。')); return; }
     text = text.trim() || taskQuestions[task];
     if (!text) return;
     const source = this.source, session = this.session, item = this.item;
     const abort = new (this.doc.defaultView as any).AbortController() as AbortController;
     this.abort = abort; ReaderController.requests.set(session.identity, abort);
+    this.setActiveSource();
     this.state.busy = true; this.state.error = ''; this.state.notice = ''; this.notifyAll(); this.emit();
     let answer: Message | undefined;
     const isCurrent = () => this.session === session && !this.disposed;
@@ -150,26 +204,33 @@ export class ReaderController {
       this.emit(); await this.storage.saveSession(session);
       // Re-check before every request: a replaced PDF invalidates old positions.
       if (await item.attachmentHash !== source.version) throw new Error('PDF 已更新，请重新读取原文后再分析。');
-      const chunks = task === 'overview' ? chunkBlocks(source.blocks, settings.contextChars) : [];
+      const fullTextAnnotation = task === 'close' && !response.quote;
+      const chunks = task === 'overview' || fullTextAnnotation ? chunkBlocks(source.blocks, settings.contextChars) : [];
       if (chunks.length > 1) {
         response.sourceIds = source.blocks.map(b => b.id);
         const summaries: string[] = [];
+        const segmentInstruction = fullTextAnnotation
+          ? '按原文顺序逐段注解以下论文片段。对每个有文字的段落标出来源编号，并说明：段落主旨、关键术语或公式、在论证中的作用、与相邻段落的关系。不要把没有给出的内容补进来。' + ANNOTATION_FORMAT
+          : '提取以下论文片段的研究问题、方法、结果、贡献、局限，保留 #source-b编号 引用。不要当作整篇论文。';
         for (let i = 0; i < chunks.length; i++) {
           if (abort.signal.aborted) throw new Error('已停止');
           response.range = `部分完成 · ${i}/${chunks.length} 部分`;
           progress(`正在分析第 ${i + 1}/${chunks.length} 部分；已完成 ${i} 部分`);
           let summary = '';
           await this.ai.stream(settings, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
-            `提取以下论文片段的研究问题、方法、结果、贡献、局限，保留 #source-b编号 引用。不要当作整篇论文。控制在 1200 字内。\n${sourceText(chunks[i])}` }], chunk => { summary += chunk; }, abort.signal);
+            `${segmentInstruction} 控制在 ${fullTextAnnotation ? 2200 : 1200} 字内。\n${sourceText(chunks[i])}` }], chunk => { summary += chunk; }, abort.signal);
           summaries.push(summary);
-          response.content = summaries.map((s, index) => `### 原文分段 ${index + 1}\n${s}`).join('\n\n');
+          response.content = summaries.map((s, index) => `### ${fullTextAnnotation ? '全文注解分段' : '原文分段'} ${index + 1}\n${s}`).join('\n\n');
           response.range = `部分完成 · ${i + 1}/${chunks.length} 部分`;
           this.emit(); await this.storage.saveSession(session);
         }
         const partial = response.content;
         let final = '';
-        progress('各部分已完成，正在汇总整篇概览…');
+        progress(fullTextAnnotation ? '各部分注解已完成。' : '各部分已完成，正在汇总整篇概览…');
         try {
+          if (fullTextAnnotation) {
+            response.range = `全文注解 · ${source.pageCount} 页 · ${chunks.length} 部分`;
+          } else {
           let groups = groupSummaries(summaries, settings.contextChars);
           for (let round = 0; groups.length > 1; round++) {
             if (round === 4) throw new Error('分段摘要超出上下文预算，已保留各段解读。请提高预算后重试。');
@@ -186,8 +247,9 @@ export class ReaderController {
           await this.ai.stream(settings, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
             `${text}\n解释深度：${settings.depth}。下文为按顺序分析全文所得的摘要，请合并去重，并保留有效来源编号：\n${groups[0]}` }],
           chunk => { final += chunk; response.content = final; this.emit(); }, abort.signal);
+          }
         } catch (error) { response.content = partial; throw error; }
-        response.range = `全文 · ${source.pageCount} 页 · ${chunks.length} 部分`;
+        if (!fullTextAnnotation) response.range = `全文 · ${source.pageCount} 页 · ${chunks.length} 部分`;
       } else {
         const request = buildMessages(source, task === 'overview' ? [] : history, text, response.quote, task, settings.depth, settings.contextChars);
         response.sourceIds = request.blocks.map(b => b.id); response.range = request.range;
@@ -227,6 +289,10 @@ export class ReaderController {
     if (!location) return;
     this.previousLocation ||= readingPosition(this.reader);
     await navigateReader(this.reader, location.rects?.length ? { position: location } : { pageIndex: location.pageIndex });
+    if (id !== 'selection' && message?.task === 'close') {
+      this.setActiveSource(id, messageID);
+      this.navigationCursor = readingCursor(this.reader);
+    }
     this.state.returnAvailable = true; this.emit();
   }
   async returnToReading() {
@@ -245,7 +311,7 @@ export class ReaderController {
     } finally { ReaderController.noteSaves.delete(message.id); }
   }
   async dispose() {
-    this.disposed = true; this.abort?.abort(); clearTimeout(this.saveTimer); this.listeners.clear();
+    this.disposed = true; this.abort?.abort(); clearTimeout(this.saveTimer); clearInterval(this.syncTimer); this.listeners.clear();
     if (this.session) await this.storage.saveSession(this.session);
   }
 }

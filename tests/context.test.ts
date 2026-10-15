@@ -25,6 +25,13 @@ test('prompt labels partial context and only offers available source IDs', () =>
   const offered = [...request.messages[0].content.matchAll(/\[(b\d+) \|/g)].map(m => m[1]);
   assert.deepEqual(offered, request.blocks.map(b => b.id));
 });
+test('annotation prompt supports a full document without a selected quote', () => {
+  const source: Source = { identity: '1_TEST', version: 'v1', itemID: 1, title: 'Synthetic paper', blocks: blocks.slice(0, 2), pageCount: 1 };
+  const request = buildMessages(source, [], '请生成全文注解', undefined, 'close', 'standard', 20000);
+  assert.match(request.messages[0].content, /全文段落级注解/);
+  assert.match(request.messages[0].content, /关键术语或公式/);
+  assert.match(request.messages.at(-1)?.content || '', /全文注解/);
+});
 test('oversized paragraph keeps the selected sentence and is labeled as an excerpt', () => {
   const text = 'Before. '.repeat(500) + 'The selected claim.' + ' After.'.repeat(500);
   const large = { ...blocks[0], text };

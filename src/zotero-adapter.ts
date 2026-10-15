@@ -1,4 +1,5 @@
 import { normalizeStructured } from './reading/normalize';
+import type { ReadingCursor } from './reading/position';
 import type { Location, Message, Source } from './types';
 import type { Storage } from './storage';
 
@@ -54,6 +55,27 @@ export function readingPosition(reader: any) {
   const point = first?.view.getPagePoint(container.scrollLeft - first.x, container.scrollTop - first.y);
   return first ? { dest: [first.id - 1, { name: 'XYZ' }, point[0], point[1], pdf.currentScale] } :
     { pageIndex: reader._internalReader._state.primaryViewState?.pageIndex ?? 0 };
+}
+
+export function readingCursor(reader: any): ReadingCursor | undefined {
+  const view = reader?._internalReader?._lastView;
+  const win = view?._iframeWindow;
+  const pdf = win?.PDFViewerApplication?.pdfViewer;
+  const container = win?.document?.getElementById('viewerContainer');
+  const visible = pdf?._getVisiblePages?.();
+  const pages = visible?.views?.length ? visible.views : visible?.first ? [visible.first] : [];
+  if (!container || !pages.length) return undefined;
+
+  const centerX = container.scrollLeft + container.clientWidth / 2;
+  const centerY = container.scrollTop + container.clientHeight / 2;
+  const page = pages.find((candidate: any) => {
+    const width = candidate.view?.div?.clientWidth || candidate.view?.viewport?.width || 0;
+    const height = candidate.view?.div?.clientHeight || candidate.view?.viewport?.height || 0;
+    return width > 0 && height > 0 && centerX >= candidate.x && centerX <= candidate.x + width &&
+      centerY >= candidate.y && centerY <= candidate.y + height;
+  }) || pages[0];
+  const point = page.view?.getPagePoint?.(centerX - page.x, centerY - page.y);
+  return { pageIndex: page.id - 1, ...(point ? { x: point[0], y: point[1] } : {}) };
 }
 
 export async function navigateReader(reader: any, location: object) {

@@ -9,6 +9,8 @@ const destination = resolve(root, 'build/addon');
 await rm(destination, { recursive: true, force: true });
 await mkdir(destination, { recursive: true });
 await cp(resolve(root, 'addon'), destination, { recursive: true });
+await cp(resolve(root, 'node_modules/katex/dist/katex.min.css'), join(destination, 'content/katex.min.css'));
+await cp(resolve(root, 'node_modules/katex/dist/fonts'), join(destination, 'content/fonts'), { recursive: true });
 await build({ entryPoints: [resolve(root, 'src/host.ts')], outfile: join(destination, 'content/host.js'),
   bundle: true, format: 'iife', globalName: 'PaperLensHost', target: 'firefox140', charset: 'utf8' });
 await build({ entryPoints: [resolve(root, 'src/ui/index.tsx')], outfile: join(destination, 'content/ui.js'),
