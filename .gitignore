@@ -1,0 +1,16 @@
+node_modules/
+build/
+dist/
+output/
+.codegraph/
+.env
+.env.*
+!.env.example
+*.xpi
+*.log
+*.sqlite*
+__pycache__/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,38 @@
+{
+  "name": "paperlens-zotero",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PaperLens — understand and verify papers inside Zotero",
+  "homepage": "https://github.com/DreamPerday/PaperLens-Zotero",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DreamPerday/PaperLens-Zotero.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DreamPerday/PaperLens-Zotero/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "dev:setup": "node scripts/dev-profile.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.3",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "esbuild": "^0.25.0",
+    "fflate": "^0.8.2",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
