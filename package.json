@@ -2,6 +2,7 @@
   "name": "paperlens-zotero",
   "version": "0.2.1",
   "private": true,
+  "license": "MIT",
   "description": "PaperLens — understand and verify papers inside Zotero",
   "homepage": "https://github.com/DreamPerday/PaperLens-Zotero",
   "repository": {

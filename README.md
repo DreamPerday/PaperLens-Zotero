@@ -115,3 +115,9 @@ node scripts/command.mjs scripts/resize-smoke.js
 版本号分别位于 `package.json` 和 `addon/manifest.json`。发布时同时更新这两处与锁文件，运行上述检查及构建，将 XPI 上传至对应版本的 GitHub Release，再更新 `updates.json` 的版本、兼容范围与 `update_link`。已发布标签和安装包应保持不变，后续修订发布为新版本。
 
 GitHub Actions 会在推送和拉取请求中执行类型检查、单元测试和构建，并保留 XPI 构建产物。普通用户从 Releases 下载正式安装包即可。
+
+## 开源许可证
+
+PaperLens for Zotero 采用 [MIT 许可证](LICENSE)，版权归 DreamPerday 所有。允许使用、修改、分发和商用，分发时需保留版权声明和许可证文本；软件按原样提供，不作担保。
+
+第三方依赖及其字体、样式等资源遵循各自的许可证。
