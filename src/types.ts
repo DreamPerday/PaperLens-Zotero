@@ -5,7 +5,17 @@ export interface Location { pageIndex: number; rects?: number[][]; annotationID?
 export interface Quote { text: string; pageLabel: string; location: Location; blockIds?: string[] }
 export interface Block { id: string; text: string; section: string; kind: string; pageLabel: string; location: Location; locations?: Location[]; excerpt?: boolean }
 export interface Source { identity: string; version: string; title: string; itemID: number; blocks: Block[]; pageCount: number }
-export interface Settings { baseURL: string; apiKey: string; model: string; depth: Depth; hints: boolean; contextChars: number }
+export interface Settings { baseURL: string; apiKey: string; model: string; depth: Depth; hints: boolean; contextChars: number; autoTranslate?: boolean }
+export interface TranslationState {
+  quote: Quote; content: string; model: string; status: 'idle' | Status;
+  autoTranslate: boolean; configured: boolean; error: string;
+}
+export interface TranslationBridge {
+  subscribe(listener: (state: TranslationState) => void): () => void;
+  translate(): Promise<void>; stop(): void; close(): void; copy(text: string): void;
+  setAutoTranslate(value: boolean): Promise<void>; ask(): Promise<void>; openSettings(): void;
+  move(dx: number, dy: number): void;
+}
 export interface Message {
   id: string; role: 'user' | 'assistant'; content: string; status: Status; task: Task;
   quote?: Quote; sourceIds?: string[]; sourceVersion?: string; model?: string;

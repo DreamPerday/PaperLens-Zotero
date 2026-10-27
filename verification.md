@@ -1,3 +1,18 @@
+# 0.3.0 验收记录
+
+日期：2026-10-27。环境：Windows，Zotero 10.0.6。使用独立 profile、合成论文和本机模拟 AI 服务，不访问个人论文库或真实密钥。此版本新增选文自动翻译浮窗，验收范围与限制如下。
+
+- `npm run check`、32 项单元测试和 `npm run build` 通过，生成 `dist/paperlens-zotero-0.3.0.xpi`。
+- `scripts/translation-smoke.js` 的 15 项原生集成检查通过：自动弹出、选文请求、Markdown/公式、阅读区边界、260/320/380px 内容布局、侧栏改变宽度后的浮窗定位、问答历史保持、自动翻译开关持久化、手动翻译、流式输出、停止重试、换选文取消旧请求、侧栏追问、未配置 AI 的提示及 Esc 关闭。
+- `scripts/translation-drag-smoke.js` 使用 Gecko `sendMouseEvent` 触发原生指针事件，记录到 `pointerdown → gotpointercapture → pointermove → pointerup → lostpointercapture`。浮窗从 `(508.82, 105.20)` 移到 `(537.00, 165.20)`，右侧边界约束生效，松手后的移动不再改变浮窗位置。这是 Zotero 内部输入事件验证；桌面 computer-use 接口连接失败，未完成系统鼠标注入或人工鼠标验收。
+- `scripts/translation-window-smoke.js` 的 7 项检查通过：独立 PDF 窗口、选文匹配、主窗与独立窗隔离、窗口内定位、长译文滚动、滚动 PDF 收起浮窗及关闭窗口清理。
+- 原有 `scripts/native-smoke.js` 的 15 项流程检查通过；`ui-smoke.js` 的 26 项界面检查、`annotation-smoke.js` 的 7 项正文联动检查和 `resize-smoke.js` 的 5 项侧栏适配检查通过。
+- 从运行中的 0.2.1 热升级到 0.3.0 的资源与界面检查通过，也完成 0.3.0 冷启动测试。使用合成译文对实际绘制的浮窗截图检查。
+
+浮窗挂载在 Zotero 宿主窗口，按阅读器选区定位，避免阅读器内容对 `chrome://` 资源的加载限制。拖动使用指针捕获；外部点击判断排除浮窗 iframe 内部事件，避免开始拖动就误关闭。阅读器的 XUL 宽度变化不会可靠触发 `ResizeObserver`，因此仅在浮窗打开时按 200ms 间隔校正位置，并在关闭时清除计时器。
+
+自动翻译默认开启，用户可以在浮窗或设置中关闭。翻译只向已配置的服务发送当前选文，不发送整篇上下文，不写入问答历史；换选文、关闭浮窗或关闭阅读器会取消未完成的请求。真实模型的翻译质量、macOS/Linux 和其他 Zotero 版本仍需单独验证。
+
 # 0.2.1 本机验收记录
 
 日期：2026-10-15。环境：Windows，Zotero 10.0.6。功能测试使用独立 profile、合成 PDF 与仅监听本机的模拟 AI 服务；不使用个人论文或真实密钥。

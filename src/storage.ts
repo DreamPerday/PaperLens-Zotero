@@ -1,7 +1,7 @@
 import type { Session, Settings, Source } from './types';
 
 export const DEFAULT_SETTINGS: Settings = {
-  baseURL: 'https://api.openai.com/v1', apiKey: '', model: '', depth: 'standard', hints: true, contextChars: 32000,
+  baseURL: 'https://api.openai.com/v1', apiKey: '', model: '', depth: 'standard', hints: true, contextChars: 32000, autoTranslate: true,
 };
 const PREF = 'extensions.paperlens.settings';
 const ORIGIN = 'chrome://paperlens';

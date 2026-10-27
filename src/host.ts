@@ -1,6 +1,7 @@
 import { AIClient } from './ai/client';
 import { ReaderController } from './controller';
 import { Storage } from './storage';
+import { TranslationPopups } from './translation/popup';
 import { findReader, openReader } from './zotero-adapter';
 import type { Bridge, Quote } from './types';
 
@@ -21,6 +22,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       void controller.refreshSettings().catch(error => Zotero.logError(error));
     }
   };
+  const translations = new TranslationPopups(sidebarURL, storage, ai, show, notify);
 
   function mount(body: HTMLElement, item?: any, explicitReader?: any) {
     let view = views.get(body);
@@ -78,6 +80,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   }
 
   async function show(reader: any, quote?: Quote) {
+    translations.close(reader);
     if (!reader.tabID) {
       const entry = mountStandalone(reader);
       await entry.controller.load(Zotero.Items.get(reader.itemID), reader);
@@ -113,15 +116,21 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   const selectionListener = (event: any) => {
     const { reader, doc, params, append } = event;
     if (reader.type !== 'pdf' || !params.annotation?.text) return;
+    const annotation = JSON.parse(JSON.stringify(params.annotation));
+    const quote: Quote = { text: annotation.text, pageLabel: String(annotation.pageLabel || annotation.position.pageIndex + 1), location: annotation.position };
     const button = doc.createElement('button');
     button.type = 'button'; button.textContent = '问 PaperLens';
     button.style.cssText = 'padding:5px 9px;margin:3px;border:1px solid #7b93b4;border-radius:4px;cursor:pointer;color:inherit;background:transparent;';
     button.addEventListener('click', () => {
-      const annotation = JSON.parse(JSON.stringify(params.annotation));
-      const quote: Quote = { text: annotation.text, pageLabel: String(annotation.pageLabel || annotation.position.pageIndex + 1), location: annotation.position };
       void show(reader, quote).catch(error => Zotero.logError(error));
     });
-    append(button);
+    const translate = doc.createElement('button');
+    translate.type = 'button'; translate.textContent = '翻译';
+    translate.setAttribute('title', '用当前 AI 模型翻译选文');
+    translate.style.cssText = button.style.cssText;
+    translate.addEventListener('click', () => translations.open(reader, translate, quote));
+    append(button, translate);
+    translations.schedule(reader, translate, quote);
   };
   const toolbarListener = ({ reader, doc, append }: any) => {
     if (reader.type !== 'pdf') return;
@@ -212,6 +221,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       frame.src = sidebarURL; body.replaceChildren(frame); preferenceFrames.set(frame, cleanup);
     },
     async stop() {
+      translations.dispose();
       Zotero.Reader.unregisterEventListener('renderTextSelectionPopup', selectionListener);
       Zotero.Reader.unregisterEventListener('renderToolbar', toolbarListener);
       for (const win of windows.keys()) plugin.removeWindow(win);

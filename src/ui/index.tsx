@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Markdown } from './markdown';
 import { ModelSwitcher } from './model-switcher';
+import { TranslationPopup } from './translation-popup';
 import type { Bridge, Message, Settings, Task, ViewState } from '../types';
 import './style.css';
 
@@ -39,6 +40,8 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
       <p className="field-help">获取列表失败时仍可手动填写模型 ID。</p>
       <label>默认解释深度<select value={settings.depth} onChange={e => update('depth', e.target.value)}><option value="simple">简明</option><option value="standard">标准</option><option value="deep">深入</option></select></label>
       <label className="check"><input type="checkbox" checked={settings.hints} onChange={e => update('hints', e.target.checked)}/>显示阅读提示与示例问题</label>
+      <label className="check"><input type="checkbox" checked={settings.autoTranslate !== false} onChange={e => update('autoTranslate', e.target.checked)}/>选中 PDF 原文后自动显示翻译浮窗</label>
+      <p className="field-help">默认译为简体中文，沿用当前模型。选文会发送到配置的 AI 服务；关闭后可点击选文工具栏的“翻译”。</p>
       <details><summary>高级设置</summary><label>单次原文上下文预算（字符）<input type="number" min="4000" max="160000" step="4000" value={settings.contextChars} onChange={e => update('contextChars', Number(e.target.value))}/></label><p className="field-help">长文概览会分段处理全文。预算应与模型实际上下文容量匹配。</p></details>
       <p className="privacy">密钥保存在本机凭据存储。主动提问或分析时，会将相关论文文字发送给此处配置的服务。</p>
       <div className="actions"><button disabled={Boolean(busy) || !settings.model.trim()} onClick={() => act('test', async () => setNotice(await bridge.testConnection(settings)))}>{busy === 'test' ? '测试中…' : '测试连接'}</button><button className="primary" disabled={Boolean(busy) || !settings.baseURL.trim() || !settings.model.trim()} onClick={() => act('save', async () => {
@@ -157,6 +160,10 @@ function App({ bridge }: { bridge: Bridge }) {
 window.PaperLensUI = { mount(bridge) {
   const root = createRoot(document.getElementById('root')!);
   root.render(<App bridge={bridge}/>);
+  return () => root.unmount();
+}, mountTranslation(bridge) {
+  const root = createRoot(document.getElementById('root')!);
+  root.render(<TranslationPopup bridge={bridge}/>);
   return () => root.unmount();
 } };
 const announceReady = () => window.frameElement?.dispatchEvent(new CustomEvent('paperlens-ui-ready'));

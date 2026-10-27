@@ -6,7 +6,10 @@ declare global {
   const ChromeUtils: any;
   const Components: any;
   interface Window {
-    PaperLensUI: { mount(bridge: import('./types').Bridge): () => void };
+    PaperLensUI: {
+      mount(bridge: import('./types').Bridge): () => void;
+      mountTranslation(bridge: import('./types').TranslationBridge): () => void;
+    };
   }
 }
 export {};

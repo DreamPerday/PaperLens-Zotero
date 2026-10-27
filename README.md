@@ -2,11 +2,11 @@
 
 帮助读懂和核对论文的 AI 阅读助手。直接使用 Zotero 的 PDF 阅读器，在常驻侧栏里提问、精读、生成概览和核对论文依据。
 
-当前版本为 **0.2.1**，要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前版本为 **0.3.0**，新增选文自动翻译浮窗；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
 
 ## 安装与开始阅读
 
-1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.2.1.xpi`。从源码构建时，文件位于 `dist/`。
+1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.0.xpi`。从源码构建时，文件位于 `dist/`。
 2. 打开 Zotero → **工具 → 插件**，点击齿轮 → **从文件安装插件**，选择此 XPI。
 3. 打开一份本机 PDF，点击阅读器工具栏的 **PaperLens**，或右侧 PaperLens 图标。
 4. 在侧栏的 **设置** 中填写 AI 服务的 **Base URL、API Key、模型 ID**。也可以从 Zotero 设置左侧的 **PaperLens** 进入。
@@ -26,7 +26,7 @@
 | 概览 | 提取研究问题、方法、结果、贡献和局限；长文分段后汇总 |
 | 证据核对 | 输入一个具体主张或选中结论，判断支持、部分支持或当前依据不足，并列出限制 |
 
-切换任务、选文、解释深度或示例问题不会自动调用 AI。解释深度可选“简明 / 标准 / 深入”；阅读提示可以在设置中关闭。
+侧栏中切换任务、带入选文、改变解释深度或示例问题不会自动生成回答；开启选文自动翻译时，PDF 选文会单独调用翻译。解释深度可选“简明 / 标准 / 深入”；阅读提示可以在设置中关闭。
 
 回答逐步显示，支持 **停止生成** 和失败后的 **重试**。回答支持 GFM Markdown、表格、代码块和 LaTeX 数学公式（行内 `$...$`、独立 `$$...$$`），长公式可以横向滚动。中文标点紧邻加粗标记、AI 在加粗边界误加空格时也可正常显示；代码示例中的 Markdown 与公式分隔符保持原样。停止保留已收到的文字；全文概览和全文注解保留已完成的分段结果，重试会重新执行本次分析。上下文预算是单次原文的字符预算，并不等于模型的总 Token 容量，需为提示词、对话和回答预留空间。
 
@@ -37,12 +37,20 @@
 
 **保存为笔记** 为论文创建 Zotero 子笔记，包含问题、解读、选文、页级来源链接、模型和生成时间。独立附件会创建独立笔记。插件内引用保留区域坐标；普通笔记链接提供页级回跳，不会为每条 AI 引用创建原生高亮。
 
+## 选文翻译浮窗
+
+配置 AI 后，在 PDF 中选中句子或段落，停留约半秒即可自动显示简体中文译文。翻译沿用当前模型，不需要打开侧栏或输入问题；请求只包含当前选文，不会读取整篇论文作为翻译上下文，也不会写入问答历史。
+
+浮窗支持流式译文、Markdown 与数学公式、展开原文、复制、停止和重试。拖动标题栏可移动浮窗，长译文在窗内滚动。点击关闭、按 Esc、点击原文其他位置或滚动 PDF 可收起浮窗；未完成的翻译会取消。重新选文时，旧请求会取消，新译文只对应新的选区。
+
+在浮窗底部或 PaperLens 设置中关闭 **选中后自动翻译**，此后选文不再自动请求模型，需要时点击原生选文工具栏的 **翻译**。点击 **在侧栏追问** 会将同一选文带入问答，用户输入问题后才发起问答请求。
+
 ## 数据与隐私
 
 - AI Key 使用 Zotero 所在环境的 Mozilla 凭据存储 `Services.logins`，不写入普通配置、笔记或 XPI。
 - 服务地址、模型、深度和上下文预算保存在 `extensions.paperlens.settings` 偏好中。
 - 原文索引及阅读记录存放在 **Zotero 数据目录下的 `paperlens/`**，按 `libraryID_attachmentKey` 区分附件，使用 JSON 保存。
-- 论文问答、精读等主动操作会向用户配置的服务发送相关原文及近期对话；模型发现和连接测试同样会访问配置的服务。
+- 论文问答、精读等主动操作会向用户配置的服务发送相关原文及近期对话；开启自动翻译时，选中 PDF 文字会将选文发送到同一服务。模型发现和连接测试同样会访问配置的服务。
 - 阅读历史只在本机保存。主动保存的 Zotero 笔记遵循用户的 Zotero 同步设置；卸载插件会保留本机阅读记录和笔记。
 - 插件没有账号、租户体系、遥测或后台资料库批量上传。
 
@@ -67,7 +75,7 @@ npm test
 npm run build
 ```
 
-构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.2.1.xpi`。KaTeX 样式和字体会随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
+构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.0.xpi`。KaTeX 样式和字体会随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
 
 | 文件 | 负责的能力 |
 | --- | --- |
@@ -78,6 +86,7 @@ npm run build
 | `src/reading/context.ts` | 上下文选取、四种任务提示词、长文分段 |
 | `src/ai/client.ts` | 兼容 API、模型列表、流式响应和停止 |
 | `src/controller.ts` | 任务、历史、停止重试与来源关联 |
+| `src/translation/` | 选文翻译请求、浮窗定位、拖动与生命周期 |
 | `src/storage.ts` | 设置、凭据、本地索引与历史 |
 | `src/ui/` | 侧栏内容和交互 |
 
@@ -104,6 +113,9 @@ node scripts/command.mjs scripts/native-smoke.js
 node scripts/command.mjs scripts/ui-smoke.js
 node scripts/command.mjs scripts/annotation-smoke.js
 node scripts/command.mjs scripts/resize-smoke.js
+node scripts/command.mjs scripts/translation-smoke.js
+node scripts/command.mjs scripts/translation-drag-smoke.js
+node scripts/command.mjs scripts/translation-window-smoke.js
 ```
 
 验证不重启升级时，先在隔离 profile 中运行旧版本并执行一次原生检查，再构建新版本，运行 `node scripts/command.mjs scripts/upgrade-smoke.js`；它会安装仓库当前版本并检查新版脚本与样式是否生效。
