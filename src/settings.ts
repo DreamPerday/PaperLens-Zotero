@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wordTranslationProviderId: '',
   offlineDictionary: true,
   translationKeepOpen: true,
+  easyScholarApiKey: '',
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -95,6 +96,7 @@ export function normalizeSettings(value: unknown): Settings {
     translationKeepOpen: typeof raw.translationKeepOpen === 'boolean'
       ? raw.translationKeepOpen
       : DEFAULT_SETTINGS.translationKeepOpen,
+    easyScholarApiKey: text(raw.easyScholarApiKey),
   };
 }
 

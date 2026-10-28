@@ -54,5 +54,6 @@ test('empty settings use an editable default provider', () => {
   assert.equal(settings.autoTranslate, true);
   assert.equal(settings.offlineDictionary, true);
   assert.equal(settings.translationKeepOpen, true);
+  assert.equal(settings.easyScholarApiKey, '');
   assert.equal(settings.wordTranslationProviderId, '');
 });

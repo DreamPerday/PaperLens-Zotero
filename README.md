@@ -2,11 +2,11 @@
 
 帮助读懂和核对论文的 AI 阅读助手。直接使用 Zotero 的 PDF 阅读器，在常驻侧栏里提问、精读、生成概览和核对论文依据。
 
-当前版本为 **0.3.3**，在选文自动翻译基础上新增多服务商、内置离线词典、单词本地路由、失败内容替换和期刊分区信息；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前版本为 **0.3.5**，在选文自动翻译基础上新增多服务商、内置离线词典、单词本地路由、失败内容替换、期刊分区信息和在线出版信息查询；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
 
 ## 安装与开始阅读
 
-1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.3.xpi`。从源码构建时，文件位于 `dist/`。
+1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.5.xpi`。从源码构建时，文件位于 `dist/`。
 2. 打开 Zotero → **工具 → 插件**，点击齿轮 → **从文件安装插件**，选择此 XPI。
 3. 打开一份本机 PDF，点击阅读器工具栏的 **PaperLens**，或右侧 PaperLens 图标。
 4. 在侧栏的 **设置** 中添加服务商，并填写各自的 **显示名称、Base URL、API Key、模型 ID**。可以保存多个服务商；从 Zotero 设置左侧的 **PaperLens** 也可以进入。
@@ -30,7 +30,11 @@
 
 选中论文条目后，Zotero **信息** 区会出现 **期刊 / 出版物** 和 **JCR / 中科院分区** 两行。期刊直接写入 Zotero 标准出版字段；会议论文、图书章节和预印本会使用对应出版物字段。
 
-分区值写入条目标签，例如 `PaperLens/JCR-Q1`、`PaperLens/CAS-2`，因此可以在 Zotero 标签区筛选和同步。编辑时可输入 `Q1`、`JCR Q1`、`1区` 或 `中科院 1区`，留空可清除。插件不会联网自动查询期刊或分区。
+第三条 **会议等级（CCF / CORE）** 只用于会议论文。分区和会议等级写入条目标签，例如 `PaperLens/JCR-Q1`、`PaperLens/CAS-2`、`PaperLens/CCF-A`、`PaperLens/CORE-A*`，可以在 Zotero 标签区筛选和同步。编辑时可输入 `Q1`、`中科院 1区`、`CCF-A` 或 `CORE-A*`，留空可清除。标签名称保持纯文字，不添加图案前缀；插件会直接设置 Zotero 标签颜色。
+
+条目侧栏新增 **出版信息** 小节，提供醒目的 **在线查询出版信息** 按钮；也可以在论文条目上右键选择 **PaperLens：在线查询出版信息**。插件会通过 DOI/标题匹配 OpenAlex、Crossref 和 arXiv，先显示论文类型、出版来源、年份和 CCF/CORE 等级，确认后写入条目。EfficientNet 会识别为 ICML 2019、CCF-A、CORE-A*。
+
+在设置中填写 EasyScholar 开放接口密钥后，插件还会调用 EasyScholar `getPublicationRank` 接口，读取 `sci`、`sciUp`、`sciBase`、`ccf` 和自定义数据集字段，自动填写 JCR、中科院分区和 CCF。密钥在 EasyScholar 官网登录后从 **开放接口** 页面获取，并保存在本机 Zotero 凭据库。
 
 侧栏中切换任务、带入选文、改变解释深度或示例问题不会自动生成回答；开启选文自动翻译时，PDF 选文会单独调用翻译。解释深度可选“简明 / 标准 / 深入”；阅读提示可以在设置中关闭。
 
@@ -63,6 +67,8 @@
 - 离线词典随 XPI 本地提供，词条查询不会上传选中的单词。
 - 原文索引及阅读记录存放在 **Zotero 数据目录下的 `paperlens/`**，按 `libraryID_attachmentKey` 区分附件，使用 JSON 保存。
 - 论文问答、精读等主动操作会向用户配置的服务发送相关原文及近期对话；开启自动翻译时，选中 PDF 文字会将选文发送到同一服务。模型发现和连接测试同样会访问配置的服务。
+- 主动使用在线出版查询时，会将论文标题或 DOI 发送到 OpenAlex、Crossref 或 arXiv；CCF/CORE 匹配使用插件内置的 CCFDDL 精简榜单，不额外上传论文内容。
+- 配置 EasyScholar 密钥后，查询还会将论文的期刊或会议名称发送给 EasyScholar 开放接口，以获取等级数据。
 - 阅读历史只在本机保存。主动保存的 Zotero 笔记遵循用户的 Zotero 同步设置；卸载插件会保留本机阅读记录和笔记。
 - 插件没有账号、租户体系、遥测或后台资料库批量上传。
 
@@ -87,7 +93,7 @@ npm test
 npm run build
 ```
 
-构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.3.xpi`。KaTeX 样式、字体和精简离线词典随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
+构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.5.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
 
 | 文件 | 负责的能力 |
 | --- | --- |
@@ -100,6 +106,8 @@ npm run build
 | `src/controller.ts` | 任务、历史、停止重试与来源关联 |
 | `src/history.ts` | 新请求替换同任务失败或中断的旧回答 |
 | `src/paper-metadata.ts` | 期刊标准字段、JCR/中科院分区标签 |
+| `src/paper-online.ts` | OpenAlex、Crossref、arXiv 出版信息查询与确认写入 |
+| `src/paper-ranks/ccf.json` | 由 CCFDDL 生成的 CCF/CORE 会议等级索引 |
 | `src/translation/` | 选文翻译请求、浮窗定位、拖动与生命周期 |
 | `src/translation/dictionary.json` | 由 ECDICT 生成的精简离线英汉词库 |
 | `src/settings.ts` | 多服务商设置、旧配置迁移和当前服务商选择 |
@@ -131,12 +139,14 @@ node scripts/command.mjs scripts/annotation-smoke.js
 node scripts/command.mjs scripts/resize-smoke.js
 node scripts/command.mjs scripts/history-smoke.js
 node scripts/command.mjs scripts/metadata-smoke.js
+node scripts/command.mjs scripts/online-smoke.js
 node scripts/command.mjs scripts/translation-smoke.js
 node scripts/command.mjs scripts/translation-drag-smoke.js
 node scripts/command.mjs scripts/translation-window-smoke.js
 ```
 
 离线词典可通过 `python scripts/build-dictionary.py` 从 MIT 许可的 ECDICT 数据重新生成；来源和许可证说明见 `src/translation/OFFLINE_DICTIONARY.md`。
+会议等级数据可通过 `python scripts/build-ccf.py` 从 MIT 许可的 CCFDDL 公开目录重新生成；来源说明随 XPI 提供在 `content/CCF_DATA.txt`。
 
 验证不重启升级时，先在隔离 profile 中运行旧版本并执行一次原生检查，再构建新版本，运行 `node scripts/command.mjs scripts/upgrade-smoke.js`；它会安装仓库当前版本并检查新版脚本与样式是否生效。
 

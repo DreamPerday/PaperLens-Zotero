@@ -1,3 +1,25 @@
+# 0.3.5 验收记录
+
+日期：2026-10-28。环境：Windows，Zotero 10.0.6。修正在线查询入口可见性，并改用 Zotero 原生标签颜色。
+
+- `npm run check`、51 项单元测试和 `npm run build` 通过，生成 `dist/paperlens-zotero-0.3.5.xpi`。
+- `scripts/online-smoke.js` 的 6 项实网检查通过：EfficientNet 识别为 ICML 2019、CCF-A、CORE-A*，并实际写入条目类型、会议字段和分类标签。
+- `scripts/metadata-smoke.js` 的 8 项实机检查通过：三行出版信息显示与编辑、CCF/CORE/分区标签、Zotero 原生标签颜色，以及新增“出版信息”小节和在线查询按钮。
+- `scripts/native-smoke.js` 的 20 项检查通过，其中 EasyScholar 密钥确认保存在 Zotero 凭据库且不进入普通偏好。
+- 分类标签不再包含 emoji 或图案前缀，显示为纯文字 `CCF-A`、`CORE-A*`、`JCR Q1` 等；颜色由 Zotero 标签颜色机制提供。
+- Zotero 单库最多允许 9 个彩色标签；达到上限时保留纯文字标签和“出版信息”小节中的彩色徽标，不影响数据写入。
+- EasyScholar 响应解析、JCR/CAS/CCF 字段映射和自定义数据集合并由单元测试覆盖；本次没有用户可用的真实 EasyScholar 密钥，因此未执行真实账号接口验收。
+
+# 0.3.4 验收记录
+
+日期：2026-10-28。环境：Windows，Zotero 10.0.6。在 0.3.3 基础上增加在线出版信息查询、CCF/CORE 会议等级和彩色信息行。
+
+- `npm run check`、50 项单元测试和 `npm run build` 通过，生成 `dist/paperlens-zotero-0.3.4.xpi`。
+- `scripts/online-smoke.js` 的 6 项实网检查通过：OpenAlex 标题匹配、arXiv 会议元数据、CCF-A、CORE-A*、确认后更新论文类型，以及写入 ICML 会议字段和分类标签。
+- `scripts/metadata-smoke.js` 的 6 项实机检查通过：期刊、JCR、中科院、CCF/CORE 信息行显示和编辑保存。
+- 在线查询先展示匹配结果并等待用户确认；JCR/中科院分区未接入商业数据源，不会自动抓取。
+- CCFDDL 数据为 MIT 许可，来源和榜单边界说明随安装包提供。
+
 # 0.3.3 验收记录
 
 日期：2026-10-28。环境：Windows，Zotero 10.0.6。在 0.3.2 基础上增加条目信息区的期刊与分区编辑。

@@ -41,6 +41,11 @@ assert(!Zotero.Prefs.get('extensions.paperlens.settings', true).includes(setting
 const savedSettings = await c.bridge.getSettings();
 assert(savedSettings.providers.length === 1 && savedSettings.providers[0].model === settings.model, 'Single-provider settings did not migrate');
 assert(savedSettings.autoTranslate === true, 'Translation preference was not preserved');
+await c.bridge.saveSettings({ ...savedSettings, easyScholarApiKey: 'paperlens-easyscholar-test' });
+const easyScholarSettings = await c.bridge.getSettings();
+assert(easyScholarSettings.easyScholarApiKey === 'paperlens-easyscholar-test', 'EasyScholar key was not persisted');
+assert(!Zotero.Prefs.get('extensions.paperlens.settings', true).includes('paperlens-easyscholar-test'), 'EasyScholar key entered plain preferences');
+await c.bridge.saveSettings(savedSettings);
 const primaryProviderID = savedSettings.activeProviderId;
 const backupProviderID = 'smoke-backup';
 await c.bridge.saveSettings({ ...savedSettings, providers: [...savedSettings.providers, {
@@ -102,6 +107,6 @@ await setActiveModel(settings.model);
 await c.bridge.retry(c.session.messages.at(-1).id);
 assert(c.session.messages.length === count && c.session.messages.at(-1).status === 'complete', 'Retry failed');
 const result = { version: Zotero.version, pages: c.source.pageCount, blocks: c.source.blocks.length, noteID: answer.noteID,
-  passed: ['sidebar', 'models', 'connection', 'credential storage', 'multiple providers', 'per-provider credentials', 'provider switching', 'translation preference migration', 'selection popup', 'streaming chat', 'source navigation', 'return position', 'native note', 'close reading', 'overview', 'verify', 'stop', 'duplicate prevention', 'retry'] };
+  passed: ['sidebar', 'models', 'connection', 'credential storage', 'EasyScholar key storage', 'multiple providers', 'per-provider credentials', 'provider switching', 'translation preference migration', 'selection popup', 'streaming chat', 'source navigation', 'return position', 'native note', 'close reading', 'overview', 'verify', 'stop', 'duplicate prevention', 'retry'] };
 await IOUtils.writeJSON(PathUtils.join(directory, 'native-smoke-result.json'), result);
 return result;

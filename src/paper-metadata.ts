@@ -1,4 +1,18 @@
+import conferenceData from './paper-ranks/ccf.json';
+
 const TAG_PREFIX = 'PaperLens/';
+const CCF_VALUES = new Set(['A', 'B', 'C']);
+const CORE_VALUES = new Set(['A*', 'A', 'B', 'C']);
+
+interface ConferenceRecord {
+  acronym: string;
+  name: string;
+  ccf: string;
+  core: string;
+  key: string;
+}
+
+const CONFERENCES = conferenceData as ConferenceRecord[];
 
 export const QUARTILES = [
   { value: 'JCR-Q1', label: 'JCR Q1' },
@@ -53,12 +67,44 @@ export function quartileTag(value: string): string {
   return QUARTILE_VALUES.has(value) ? `${TAG_PREFIX}${value}` : '';
 }
 
+export function getJournalRanks(item: any): { jcr: string; cas: string } {
+  const values = [getQuartile(item)];
+  const paper = resolvePaperItem(item);
+  if (!paper) return { jcr: '', cas: '' };
+  for (const entry of paper.getTags()) {
+    const tag = String(entry.tag || '');
+    if (tag.startsWith(TAG_PREFIX) && QUARTILE_VALUES.has(tag.slice(TAG_PREFIX.length))) {
+      values.push(tag.slice(TAG_PREFIX.length));
+    }
+  }
+  return {
+    jcr: values.find(value => value.startsWith('JCR-')) || '',
+    cas: values.find(value => value.startsWith('CAS-')) || '',
+  };
+}
+
+export function journalRanksLabel(ranks: { jcr: string; cas: string }): string {
+  return [quartileLabel(ranks.jcr), quartileLabel(ranks.cas)].filter(Boolean).join(' · ');
+}
+
+export function parseJournalRanksInput(value: string): { jcr: string; cas: string } {
+  const compact = value.trim().toLowerCase().replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '').replace(/\s+/g, '');
+  if (!compact || compact === '未设置' || compact === 'notset') return { jcr: '', cas: '' };
+  const jcrMatch = compact.match(/jcrq?([1-4])/) || compact.match(/q([1-4])/);
+  const casMatch = compact.match(/cas([1-4])/) || compact.match(/中科院([1-4])区/) || compact.match(/([1-4])区/);
+  if (!jcrMatch && !casMatch) throw new Error('请输入 JCR Q1–Q4 或中科院 1区–4区，留空可清除。');
+  return {
+    jcr: jcrMatch ? `JCR-Q${jcrMatch[1]}` : '',
+    cas: casMatch ? `CAS-${casMatch[1]}` : '',
+  };
+}
+
 export function quartileLabel(value: string): string {
   return QUARTILES.find(item => item.value === value)?.label || '';
 }
 
 export function parseQuartileInput(value: string): string {
-  const compact = value.trim().toLowerCase().replace(/\s+/g, '');
+  const compact = value.trim().toLowerCase().replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '').replace(/\s+/g, '');
   if (!compact || compact === '未设置' || compact === 'notset') return '';
   const aliases: Record<string, string> = {
     q1: 'JCR-Q1', q2: 'JCR-Q2', q3: 'JCR-Q3', q4: 'JCR-Q4',
@@ -73,6 +119,97 @@ export function parseQuartileInput(value: string): string {
   return parsed;
 }
 
+export function lookupConferenceRank(venue: string): ConferenceRecord | null {
+  const normalized = venue.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!normalized) return null;
+  let best: ConferenceRecord | null = null;
+  let bestScore = 0;
+  for (const record of CONFERENCES) {
+    const acronym = record.acronym.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const name = record.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    let score = 0;
+    if (acronym.length >= 2 && (` ${normalized} `).includes(` ${acronym} `)) score = 100 + acronym.length;
+    if (name && (normalized.includes(name) || name.includes(normalized))) score = Math.max(score, 200 + name.length);
+    if (score > bestScore) { best = record; bestScore = score; }
+  }
+  return best;
+}
+
+export function getConferenceRanks(item: any): { ccf: string; core: string; conference: string } {
+  const paper = resolvePaperItem(item);
+  if (!paper) return { ccf: '', core: '', conference: '' };
+  let ccf = '', core = '', conference = '';
+  for (const entry of paper.getTags()) {
+    const tag = String(entry.tag || '');
+    if (tag.startsWith(`${TAG_PREFIX}CCF-`)) ccf = tag.slice(TAG_PREFIX.length + 4);
+    else if (tag.startsWith(`${TAG_PREFIX}CORE-`)) core = tag.slice(TAG_PREFIX.length + 5);
+    else if (tag.startsWith(`${TAG_PREFIX}Conference-`)) conference = tag.slice(TAG_PREFIX.length + 11);
+  }
+  return { ccf: CCF_VALUES.has(ccf) ? ccf : '', core: CORE_VALUES.has(core) ? core : '', conference };
+}
+
+export function conferenceRankLabel(ranks: { ccf: string; core: string }): string {
+  const parts = [];
+  if (ranks.ccf) parts.push(`CCF-${ranks.ccf}`);
+  if (ranks.core) parts.push(`CORE-${ranks.core}`);
+  return parts.join(' · ');
+}
+
+const TAG_COLORS: Record<string, string> = {
+  'JCR-Q1': '#B8860B', 'JCR-Q2': '#2E7D5B', 'JCR-Q3': '#2F6FA3', 'JCR-Q4': '#6B7280',
+  'CAS-1': '#B33A3A', 'CAS-2': '#C46A1B', 'CAS-3': '#9A7B16', 'CAS-4': '#6B7280',
+  'CCF-A': '#7A3E9D', 'CCF-B': '#2F6FA3', 'CCF-C': '#3A8055',
+  'CORE-A*': '#B03366', 'CORE-A': '#7A3E9D', 'CORE-B': '#2F6FA3', 'CORE-C': '#3A8055',
+};
+
+export function tagColor(value: string): string {
+  return TAG_COLORS[value] || '#6B7280';
+}
+
+async function colorTag(paper: any, name: string, value: string): Promise<void> {
+  const color = TAG_COLORS[value];
+  if (!color || !Zotero.Tags?.setColor) return;
+  try {
+    const libraryID = paper.libraryID;
+    if (Zotero.Tags.getColor(libraryID, name)) return;
+    if (Zotero.Tags.getColors(libraryID).size >= Zotero.Tags.MAX_COLORED_TAGS) return;
+    let position = 0;
+    while (Zotero.Tags.getColorByPosition(libraryID, position)) position++;
+    await Zotero.Tags.setColor(libraryID, name, color, position);
+  } catch (error) { Zotero.logError?.(error); }
+}
+
+export function parseConferenceRank(value: string): { ccf?: string; core?: string } {
+  const compact = value.toUpperCase().replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '').replace(/\s+/g, '');
+  if (!compact || compact === '未设置') return { ccf: '', core: '' };
+  const core = compact.match(/CORE-?(A\*|A|B|C)/)?.[1];
+  if (core && CORE_VALUES.has(core)) return { core };
+  const ccf = compact.match(/CCF-?([ABC])/)?.[1] || compact.match(/^([ABC])$/)?.[1];
+  if (ccf && CCF_VALUES.has(ccf)) return { ccf };
+  throw new Error('请输入 CCF-A/B/C 或 CORE-A*/A/B/C，留空可清除。');
+}
+
+export async function saveConferenceRanks(item: any,
+  value: { ccf?: string; core?: string; conference?: string }): Promise<void> {
+  const paper = resolvePaperItem(item);
+  if (!paper) throw new Error('请选择论文条目或论文附件。');
+  const current = getConferenceRanks(paper);
+  const ccf = value.ccf === undefined ? current.ccf : value.ccf;
+  const core = value.core === undefined ? current.core : value.core;
+  const conference = value.conference === undefined ? current.conference : value.conference;
+  const tags = paper.getTags().filter((entry: any) => {
+    const tag = String(entry.tag || '');
+    return !/^PaperLens\/(CCF-[ABC]|CORE-(A\*|A|B|C)|Conference-.+)$/.test(tag);
+  });
+  if (CCF_VALUES.has(ccf)) tags.push({ tag: `${TAG_PREFIX}CCF-${ccf}`, type: 1 });
+  if (CORE_VALUES.has(core)) tags.push({ tag: `${TAG_PREFIX}CORE-${core}`, type: 1 });
+  if (conference) tags.push({ tag: `${TAG_PREFIX}Conference-${conference.replaceAll('/', '-')}`, type: 1 });
+  paper.setTags(tags);
+  await paper.saveTx();
+  if (CCF_VALUES.has(ccf)) await colorTag(paper, `${TAG_PREFIX}CCF-${ccf}`, `CCF-${ccf}`);
+  if (CORE_VALUES.has(core)) await colorTag(paper, `${TAG_PREFIX}CORE-${core}`, `CORE-${core}`);
+}
+
 export function tagsWithQuartile(tags: Array<{ tag: string; type?: number }>, value: string): Array<{ tag: string; type?: number }> {
   const remaining = tags.filter(entry => {
     const tag = String(entry.tag || '');
@@ -80,6 +217,24 @@ export function tagsWithQuartile(tags: Array<{ tag: string; type?: number }>, va
   });
   const tag = quartileTag(value);
   return tag ? [...remaining, { tag, type: 1 }] : remaining;
+}
+
+export async function saveJournalRanks(item: any,
+  value: { jcr: string; cas: string }): Promise<void> {
+  const paper = resolvePaperItem(item);
+  if (!paper) throw new Error('请选择论文条目或论文附件。');
+  const tags = paper.getTags().filter((entry: any) => {
+    const tag = String(entry.tag || '');
+    return !tag.startsWith(TAG_PREFIX) || !QUARTILE_VALUES.has(tag.slice(TAG_PREFIX.length));
+  });
+  const jcr = QUARTILE_VALUES.has(value.jcr) && value.jcr.startsWith('JCR-') ? value.jcr : '';
+  const cas = QUARTILE_VALUES.has(value.cas) && value.cas.startsWith('CAS-') ? value.cas : '';
+  if (jcr) tags.push({ tag: `${TAG_PREFIX}${jcr}`, type: 1 });
+  if (cas) tags.push({ tag: `${TAG_PREFIX}${cas}`, type: 1 });
+  paper.setTags(tags);
+  await paper.saveTx();
+  if (jcr) await colorTag(paper, `${TAG_PREFIX}${jcr}`, jcr);
+  if (cas) await colorTag(paper, `${TAG_PREFIX}${cas}`, cas);
 }
 
 export async function saveJournal(item: any, value: string): Promise<string> {
@@ -100,5 +255,6 @@ export async function saveQuartile(item: any, value: string): Promise<string> {
   const next = value === '' || QUARTILE_VALUES.has(value) ? value : parseQuartileInput(value);
   paper.setTags(tagsWithQuartile(paper.getTags(), next));
   await paper.saveTx();
+  if (next) await colorTag(paper, `${TAG_PREFIX}${next}`, next);
   return next;
 }

@@ -5,6 +5,7 @@ const PREF = 'extensions.paperlens.settings';
 const ORIGIN = 'chrome://paperlens';
 const REALM = 'PaperLens AI service';
 const LEGACY_KEY_USERNAME = 'api-key';
+const EASYSCHOLAR_KEY_USERNAME = 'easyscholar';
 const keyUsername = (providerID: string) => `provider:${providerID}`;
 
 export class Storage {
@@ -30,6 +31,7 @@ export class Storage {
       ...provider,
       apiKey: keys.get(keyUsername(provider.id)) || (index === 0 ? legacyKey : ''),
     }));
+    settings.easyScholarApiKey = keys.get(EASYSCHOLAR_KEY_USERNAME) || '';
     return settings;
   }
 
@@ -52,10 +54,25 @@ export class Storage {
       }
     }
     for (const login of existing) {
-      if (!wanted.has(login.username)) Services.logins.removeLogin(login);
+      if (!wanted.has(login.username) && login.username !== EASYSCHOLAR_KEY_USERNAME) {
+        Services.logins.removeLogin(login);
+      }
     }
+    const easyScholarMatches = existing.filter((login: any) => login.username === EASYSCHOLAR_KEY_USERNAME);
+    if (normalized.easyScholarApiKey) {
+      const info = Components.classes['@mozilla.org/login-manager/loginInfo;1']
+        .createInstance(Components.interfaces.nsILoginInfo);
+      info.init(ORIGIN, null, REALM, EASYSCHOLAR_KEY_USERNAME, normalized.easyScholarApiKey.trim(), '', '');
+      if (easyScholarMatches.length) {
+        Services.logins.modifyLogin(easyScholarMatches[0], info);
+        for (const duplicate of easyScholarMatches.slice(1)) Services.logins.removeLogin(duplicate);
+      } else await Services.logins.addLoginAsync(info);
+    } else {
+      for (const match of easyScholarMatches) Services.logins.removeLogin(match);
+    }
+    const { easyScholarApiKey: _easyScholarApiKey, ...preferences } = normalized;
     const plain = {
-      ...normalized,
+      ...preferences,
       providers: normalized.providers.map(({ apiKey: _apiKey, ...provider }) => ({
         ...provider,
         name: provider.name.trim(),

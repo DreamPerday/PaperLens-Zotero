@@ -1,6 +1,11 @@
 import { AIClient } from './ai/client';
 import { ReaderController } from './controller';
-import { getJournal, getQuartile, parseQuartileInput, publicationField, quartileLabel, resolvePaperItem, saveJournal, saveQuartile } from './paper-metadata';
+import {
+  conferenceRankLabel, getConferenceRanks, getJournal, getJournalRanks, getQuartile, journalRanksLabel, parseConferenceRank,
+  parseJournalRanksInput, publicationField, quartileLabel, resolvePaperItem, saveConferenceRanks, saveJournal,
+  saveJournalRanks, saveQuartile, tagColor,
+} from './paper-metadata';
+import { applyPublicationLookup, lookupPublication } from './paper-online';
 import { Storage } from './storage';
 import { TranslationPopups } from './translation/popup';
 import { findReader, openReader } from './zotero-adapter';
@@ -19,6 +24,8 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   let paneID: string;
   let journalRowID: string;
   let quartileRowID: string;
+  let conferenceRowID: string;
+  let publicationPaneID: string;
   const notify = () => {
     for (const { controller } of views.values()) {
       controller.emit();
@@ -26,6 +33,113 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     }
   };
   const translations = new TranslationPopups(sidebarURL, storage, ai, show, notify);
+
+  async function mountPublicationSection(body: HTMLElement, item: any) {
+    const paper = resolvePaperItem(item);
+    if (!paper) { body.replaceChildren(); return; }
+    const doc = body.ownerDocument;
+    (doc as any).l10n?.addResourceIds(['paperlens.ftl']);
+    let labels = ['在线查询出版信息', '期刊 / 出版物', 'JCR / 中科院分区', '会议等级（CCF / CORE）', '未设置', '查询中…', '保存失败'];
+    try {
+      labels = await (doc as any).l10n.formatValues([
+        { id: 'paperlens-publication-query' }, { id: 'paperlens-journal-label' },
+        { id: 'paperlens-quartile-label' }, { id: 'paperlens-conference-rank-label' },
+        { id: 'paperlens-quartile-none' }, { id: 'paperlens-publication-querying' },
+        { id: 'paperlens-metadata-error' },
+      ]);
+    } catch { /* Use fallback labels. */ }
+    if (!body.isConnected) return;
+    const container = doc.createElementNS(HTML, 'div') as HTMLDivElement;
+    container.style.cssText = 'display:grid;gap:12px;padding:8px 2px;min-width:0;';
+    const render = () => {
+      const venue = getJournal(paper) || labels[4];
+      const quartiles = getJournalRanks(paper);
+      const ranks = getConferenceRanks(paper);
+      const section = (title: string, content: Node | string) => {
+        const row = doc.createElementNS(HTML, 'div') as HTMLDivElement;
+        row.style.cssText = 'display:grid;gap:5px;';
+        const heading = doc.createElementNS(HTML, 'strong') as HTMLElement;
+        heading.textContent = title;
+        heading.style.cssText = 'font-size:12px;';
+        const value = doc.createElementNS(HTML, 'div') as HTMLDivElement;
+        value.style.cssText = 'font-size:12px;line-height:1.7;overflow-wrap:anywhere;';
+        if (typeof content === 'string') value.textContent = content;
+        else value.append(content);
+        row.append(heading, value);
+        return row;
+      };
+      const badge = (text: string, value: string) => {
+        const node = doc.createElementNS(HTML, 'span') as HTMLSpanElement;
+        node.textContent = text;
+        node.style.cssText = `display:inline-block;margin:0 6px 4px 0;padding:2px 8px;border-radius:999px;` +
+          `background:${tagColor(value)};color:#fff;font-size:11px;font-weight:600;`;
+        return node;
+      };
+      const rankWrap = doc.createElementNS(HTML, 'div') as HTMLDivElement;
+      if (quartiles.jcr) rankWrap.append(badge(quartileLabel(quartiles.jcr), quartiles.jcr));
+      if (quartiles.cas) rankWrap.append(badge(quartileLabel(quartiles.cas), quartiles.cas));
+      if (ranks.ccf) rankWrap.append(badge(`CCF-${ranks.ccf}`, `CCF-${ranks.ccf}`));
+      if (ranks.core) rankWrap.append(badge(`CORE-${ranks.core}`, `CORE-${ranks.core}`));
+      if (!rankWrap.childNodes.length) rankWrap.textContent = labels[4];
+      const query = doc.createElementNS(HTML, 'button') as HTMLButtonElement;
+      query.textContent = labels[0];
+      query.style.cssText = 'justify-self:start;';
+      const status = doc.createElementNS(HTML, 'span') as HTMLSpanElement;
+      status.setAttribute('role', 'status');
+      status.style.cssText = 'font-size:11px;color:var(--fill-secondary);';
+      query.addEventListener('click', async () => {
+        query.disabled = true; status.textContent = labels[5];
+        try {
+          const applied = await queryAndApplyPublication(doc.defaultView, paper);
+          status.textContent = applied ? '' : '';
+          if (applied && body.isConnected) render();
+        } catch (error) {
+          status.textContent = `${labels[6]}: ${error instanceof Error ? error.message : String(error)}`;
+          Zotero.logError(error);
+        } finally { query.disabled = false; }
+      });
+      container.replaceChildren(
+        section(labels[1], venue),
+        section(`${labels[2]} · ${labels[3]}`, rankWrap),
+        query,
+        status,
+      );
+    };
+    body.replaceChildren(container);
+    render();
+  }
+
+  async function queryAndApplyPublication(win: any, item: any): Promise<boolean> {
+    const paper = resolvePaperItem(item);
+    if (!paper) return false;
+    const settings = await storage.getSettings();
+    const result = await lookupPublication(paper, fetch, settings.easyScholarApiKey);
+    const ranks = [
+      result.jcr ? quartileLabel(result.jcr) : '',
+      result.cas ? quartileLabel(result.cas) : '',
+      result.ccf ? `CCF-${result.ccf}` : '',
+      result.core ? `CORE-${result.core}` : '',
+    ].filter(Boolean).join(' · ');
+    const summary = [
+      `匹配论文：${result.title}`,
+      `类型：${result.type === 'conference' ? '会议论文' : result.type === 'journal' ? '期刊论文' : result.type === 'preprint' ? '预印本' : '其他'}`,
+      `出版来源：${result.venue || '未知'}`,
+      `年份：${result.year || '未知'}`,
+      `等级：${ranks || '无公开等级数据'}`,
+      `等级数据源：${result.rankSource || 'CCFDDL / 本地索引'}`,
+      ...(result.rankError ? [`EasyScholar 查询失败：${result.rankError}`] : []),
+      `数据源：${result.source}`,
+      '',
+      '确认后将更新条目类型和出版字段，并写入 PaperLens 分类标签。',
+    ].join('\n');
+    if (!Services.prompt.confirm(win, 'PaperLens 在线查询结果', summary)) return false;
+    await applyPublicationLookup(paper, result);
+    await win.ZoteroPane.selectItem(paper.id);
+    Zotero.ItemPaneManager.refreshInfoRow(journalRowID);
+    Zotero.ItemPaneManager.refreshInfoRow(quartileRowID);
+    Zotero.ItemPaneManager.refreshInfoRow(conferenceRowID);
+    return true;
+  }
 
   function mount(body: HTMLElement, item?: any, explicitReader?: any) {
     let view = views.get(body);
@@ -148,7 +262,10 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
 
   const plugin = {
     info, storage, ai, views,
-    paperMetadata: { getJournal, getQuartile, saveJournal, saveQuartile, resolvePaperItem },
+    paperMetadata: {
+      getJournal, getQuartile, getConferenceRanks, saveJournal, saveQuartile, saveConferenceRanks, resolvePaperItem,
+    },
+    paperOnline: { lookupPublication, applyPublicationLookup },
     async start() {
       await storage.init();
       paneID = Zotero.ItemPaneManager.registerSection({
@@ -183,13 +300,37 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
         rowID: 'paperlens-quartile', pluginID: info.id,
         label: { l10nID: 'paperlens-quartile-label' },
         position: 'end', multiline: false, nowrap: true, editable: true,
-        onGetData: ({ item }: any) => quartileLabel(getQuartile(item)),
-        onSetData: ({ item, value }: any) => saveQuartile(item, parseQuartileInput(value)),
+        onGetData: ({ item }: any) => journalRanksLabel(getJournalRanks(item)),
+        onSetData: ({ item, value }: any) => saveJournalRanks(item, parseJournalRanksInput(value)),
         onItemChange: ({ item, setEnabled, setEditable }: any) => {
           const allowed = Boolean(resolvePaperItem(item));
           setEnabled(allowed); setEditable(allowed);
         },
       });
+      conferenceRowID = Zotero.ItemPaneManager.registerInfoRow({
+        rowID: 'paperlens-conference-rank', pluginID: info.id,
+        label: { l10nID: 'paperlens-conference-rank-label' },
+        position: 'end', multiline: false, nowrap: true, editable: true,
+        onGetData: ({ item }: any) => conferenceRankLabel(getConferenceRanks(item)),
+        onSetData: async ({ item, value }: any) => {
+          await saveConferenceRanks(item, parseConferenceRank(value));
+        },
+        onItemChange: ({ item, setEnabled, setEditable }: any) => {
+          const allowed = Boolean(resolvePaperItem(item));
+          setEnabled(allowed); setEditable(allowed);
+        },
+      });
+      publicationPaneID = Zotero.ItemPaneManager.registerSection({
+        paneID: 'paperlens-publication', pluginID: info.id,
+        header: { l10nID: 'paperlens-publication-header', icon: 'chrome://paperlens/content/icon.svg' },
+        sidenav: { l10nID: 'paperlens-publication-sidenav', icon: 'chrome://paperlens/content/icon.svg' },
+        onItemChange: ({ item, setEnabled }: any) => { setEnabled(Boolean(resolvePaperItem(item))); },
+        onRender: ({ body, item }: any) => { void mountPublicationSection(body, item); },
+        onDestroy: ({ body }: any) => { body.replaceChildren(); },
+      });
+      if (!journalRowID || !quartileRowID || !conferenceRowID || !publicationPaneID) {
+        throw new Error('PaperLens 出版信息行注册失败。');
+      }
       await Zotero.PreferencePanes.register({ pluginID: info.id, id: 'paperlens-settings', label: 'PaperLens',
         src: info.rootURI + 'content/preferences.xhtml', image: info.rootURI + 'content/icon.svg' });
       Zotero.Reader.registerEventListener('renderTextSelectionPopup', selectionListener, info.id);
@@ -203,11 +344,16 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       if (!popup) return;
       const menu = win.document.createXULElement('menuitem');
       menu.id = 'paperlens-open-reader'; menu.setAttribute('label', '使用 PaperLens 阅读');
+      const queryMenu = win.document.createXULElement('menuitem');
+      queryMenu.id = 'paperlens-query-publication'; queryMenu.setAttribute('label', 'PaperLens：在线查询出版信息');
       const update = () => {
         const selected = win.ZoteroPane.getSelectedItems();
         menu.hidden = selected.length !== 1;
         const item = selected[0];
         menu.disabled = !item || !(item.isPDFAttachment() || item.isRegularItem() && item.getAttachments().some((id: number) => Zotero.Items.get(id).isPDFAttachment()));
+        const paper = resolvePaperItem(item);
+        queryMenu.hidden = selected.length !== 1;
+        queryMenu.disabled = !paper;
       };
       menu.addEventListener('command', async () => {
         const selected = win.ZoteroPane.getSelectedItems()[0];
@@ -222,8 +368,20 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
         try { await show(await openReader(item.id)); }
         catch (error) { Services.prompt.alert(win, 'PaperLens', error instanceof Error ? error.message : String(error)); }
       });
-      popup.append(menu); popup.addEventListener('popupshowing', update);
-      windows.set(win, () => { popup.removeEventListener('popupshowing', update); menu.remove(); });
+      queryMenu.addEventListener('command', async () => {
+        const paper = resolvePaperItem(win.ZoteroPane.getSelectedItems()[0]);
+        if (!paper) return;
+        try {
+          await queryAndApplyPublication(win, paper);
+        } catch (error) {
+          Services.prompt.alert(win, 'PaperLens 在线查询失败', error instanceof Error ? error.message : String(error));
+        }
+      });
+      popup.append(menu, queryMenu); popup.addEventListener('popupshowing', update);
+      windows.set(win, () => {
+        popup.removeEventListener('popupshowing', update);
+        menu.remove(); queryMenu.remove();
+      });
     },
     removeWindow(win: any) { windows.get(win)?.(); windows.delete(win); },
     mountPreferences(body: HTMLElement) {
@@ -261,6 +419,8 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       if (paneID) Zotero.ItemPaneManager.unregisterSection(paneID);
       if (journalRowID) Zotero.ItemPaneManager.unregisterInfoRow(journalRowID);
       if (quartileRowID) Zotero.ItemPaneManager.unregisterInfoRow(quartileRowID);
+      if (conferenceRowID) Zotero.ItemPaneManager.unregisterInfoRow(conferenceRowID);
+      if (publicationPaneID) Zotero.ItemPaneManager.unregisterSection(publicationPaneID);
       Zotero.PreferencePanes.unregister('paperlens-settings');
       await storage.flush();
     },

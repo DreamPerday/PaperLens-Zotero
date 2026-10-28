@@ -1,0 +1,13 @@
+PaperLens conference ranking data
+=================================
+
+Conference identity and CCF/CORE rankings are derived from CCFDDL:
+https://github.com/ccfddl/ccf-deadlines
+
+Source catalog: https://ccfddl.com/conference/allconf.json
+CCFDDL is licensed under the MIT License.
+
+Rankings belong to their respective systems. CCFDDL displays them; PaperLens
+does not redefine those rankings. CCF, CORE and institutional ranking versions
+may change over time. Saved rankings are labels on the Zotero item and should be
+checked against the applicable official edition.

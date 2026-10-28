@@ -12,6 +12,7 @@ export interface Settings {
   providers: AIProvider[]; activeProviderId: string;
   depth: Depth; hints: boolean; contextChars: number; autoTranslate: boolean;
   wordTranslationProviderId: string; offlineDictionary: boolean; translationKeepOpen: boolean;
+  easyScholarApiKey: string;
 }
 export interface TranslationState {
   quote: Quote; content: string; model: string; status: 'idle' | Status;
