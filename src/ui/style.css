@@ -40,7 +40,7 @@ header { position: relative; z-index: 2; padding: 12px 12px 8px; flex: none; }
 .model-switcher { min-width: 0; }
 .model-trigger { display: flex; align-items: center; gap: 6px; max-width: min(176px, 40vw); min-width: 0; padding: 5px 8px; border-radius: 6px; background: var(--surface); font-size: 11px; }
 .model-trigger[aria-expanded="true"] { border-color: var(--accent); background: var(--tint); }
-.model-trigger-label { color: var(--muted); flex-shrink: 0; }
+.model-trigger-label { color: var(--muted); flex: 0 1 auto; min-width: 0; max-width: 54px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .model-chevron { width: 5px; height: 5px; border-right: 1px solid var(--muted); border-bottom: 1px solid var(--muted); transform: rotate(45deg) translateY(-2px); flex-shrink: 0; margin-inline: 2px; }
 .model-trigger[aria-expanded="true"] .model-chevron { transform: rotate(225deg) translate(-1px, -1px); }
@@ -48,6 +48,8 @@ header { position: relative; z-index: 2; padding: 12px 12px 8px; flex: none; }
 .model-menu-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 9px; font-size: 12px; }
 .model-menu-heading strong { font-weight: 600; }
 .model-menu-heading > span { font-size: 10px; color: var(--muted); }
+.model-provider { display: flex; align-items: center; gap: 8px; flex: none; margin-bottom: 8px; font-size: 11px; color: var(--muted); }
+.model-provider select { flex: 1; min-width: 0; padding: 5px 7px; font-size: 11px; }
 .model-search { display: block; flex: none; width: 100%; padding: 7px 9px; margin-bottom: 8px; font-size: 12px; background: var(--surface); }
 .model-options { position: relative; min-height: 0; max-height: min(260px, 40vh); overflow: auto; scrollbar-width: thin; }
 .model-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: start; border: 0; border-radius: 5px; padding: 8px; font-size: 12px; line-height: 1.5; }
@@ -127,7 +129,21 @@ footer { border-top: 1px solid var(--border); font-size: 10px; color: var(--mute
 .question-quote p { white-space: pre-wrap; max-height: 160px; overflow: auto; margin: 7px 0 0; }
 .settings { height: 100%; overflow: auto; max-width: 640px; padding: 18px 16px 30px; margin: auto; scrollbar-width: thin; }
 .settings h1 { font-size: 20px; margin: 10px 0 5px; }
+.provider-toolbar { display: flex; align-items: end; gap: 8px; margin-top: 18px; }
+.provider-toolbar label { flex: 1; min-width: 0; font-weight: 500; }
+.provider-toolbar select { display: block; width: 100%; margin-top: 5px; }
+.provider-toolbar > button { flex: none; white-space: nowrap; }
+.provider-card { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 45%, var(--bg)); }
+.provider-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.provider-card-heading > div { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.provider-card-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-card-heading .text-button { margin-inline-start: 8px; }
+.provider-active { flex: none; padding: 1px 6px; border-radius: 999px; background: var(--tint); color: var(--accent); font-size: 10px; }
+.danger-button { color: var(--error); }
+.provider-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 13px; font-size: 11px; color: var(--muted); }
+.provider-card-actions span { min-width: 0; overflow-wrap: anywhere; }
 .settings > label, .settings details label { display: block; margin-top: 18px; font-weight: 500; }
+.provider-card label { display: block; margin-top: 13px; font-weight: 500; }
 .settings input:not([type=checkbox]), .settings select { display: block; width: 100%; margin-top: 5px; }
 .settings .input-row { display: flex; gap: 6px; margin-top: 5px; align-items: center; }
 .settings .input-row input { flex: 1; margin: 0; }
@@ -174,4 +190,6 @@ footer { border-top: 1px solid var(--border); font-size: 10px; color: var(--mute
   .depth { flex: 1; }
   .toolbar { padding-inline: 8px; }
   .settings { padding-inline: 10px; }
+  .provider-toolbar { align-items: stretch; flex-direction: column; }
+  .provider-card-heading { align-items: flex-start; }
 }

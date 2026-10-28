@@ -21,7 +21,10 @@ plugin.ai.stream = function(settings, messages, onText, signal) {
   return stream.call(this, settings, messages, onText, signal);
 };
 const savedSettings = await plugin.storage.getSettings();
-const settings = { ...savedSettings, baseURL: 'http://127.0.0.1:18791', model: 'paperlens-fixture', autoTranslate: true };
+const settings = { ...savedSettings, autoTranslate: true, providers: savedSettings.providers.map(provider =>
+  provider.id === savedSettings.activeProviderId ? { ...provider, baseURL: 'http://127.0.0.1:18791', model: 'paperlens-fixture' } : provider) };
+const withActiveModel = model => ({ ...settings, providers: settings.providers.map(provider =>
+  provider.id === settings.activeProviderId ? { ...provider, model } : provider) });
 const popup = () => hostDoc.querySelector('.paperlens-translation-popup');
 const ui = () => popup()?.querySelector('iframe')?.contentDocument;
 const close = async () => { ui()?.querySelector('.translation-close')?.click(); await wait(() => !popup(), 'Popup did not close'); };
@@ -78,7 +81,7 @@ try {
   ui().querySelector('.translation-footer input').click();
   await wait(() => ui().querySelector('.translation-footer input').checked, 'Auto translation did not re-enable');
   await close();
-  await c.bridge.saveSettings({ ...settings, model: 'paperlens-slow' });
+  await c.bridge.saveSettings(withActiveModel('paperlens-slow'));
   await select(focus);
   await wait(() => ui()?.querySelector('.translation-answer')?.textContent.length > 0, 'Streaming translation did not start');
   ui().querySelector('.translation-stop').click();
@@ -94,7 +97,7 @@ try {
   [...ui().querySelectorAll('button')].find(button => button.textContent.includes('在侧栏追问')).click();
   await wait(() => !popup() && c.state.quote?.text === other.text, 'Follow-up did not carry the selected passage to the sidebar');
   assert(c.session.messages.length === count, 'Follow-up sent a question without user input');
-  await c.bridge.saveSettings({ ...settings, model: '' });
+  await c.bridge.saveSettings(withActiveModel(''));
   const previousRequests = requests.length;
   await select(focus);
   await wait(() => ui()?.querySelector('.translation-setup'), 'Missing connection state did not offer setup');

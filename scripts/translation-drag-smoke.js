@@ -9,7 +9,8 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const wait = async (check, message) => { for (let i = 0; i < 200; i++) { if (check()) return; await pause(50); } throw new Error(message); };
 const assert = (ok, message) => { if (!ok) throw new Error(message); };
 const previous = await plugin.storage.getSettings();
-await c.bridge.saveSettings({ ...previous, baseURL: 'http://127.0.0.1:18791', model: 'paperlens-fixture', autoTranslate: true });
+await c.bridge.saveSettings({ ...previous, autoTranslate: true, providers: previous.providers.map(provider =>
+  provider.id === previous.activeProviderId ? { ...provider, baseURL: 'http://127.0.0.1:18791', model: 'paperlens-fixture' } : provider) });
 const focus = c.source.blocks.find(block => block.text.startsWith('To isolate'));
 view._setSelectionRanges(Components.utils.cloneInto([], reader._iframeWindow));
 await pause(100);

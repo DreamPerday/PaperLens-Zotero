@@ -1,4 +1,5 @@
 import type { AIClient } from '../ai/client';
+import { activeProvider } from '../settings';
 import type { Storage } from '../storage';
 import type { ChatMessage, Quote, TranslationState } from '../types';
 
@@ -31,9 +32,10 @@ export class TranslationController {
   async init() {
     const settings = await this.storage.getSettings();
     if (this.disposed) return;
+    const provider = activeProvider(settings);
     this.state.autoTranslate = settings.autoTranslate !== false;
-    this.state.model = settings.model;
-    this.state.configured = Boolean(settings.baseURL.trim() && settings.model.trim());
+    this.state.model = provider.model;
+    this.state.configured = Boolean(provider.baseURL.trim() && provider.model.trim());
     this.emit();
   }
 
@@ -45,10 +47,11 @@ export class TranslationController {
     try {
       const settings = await this.storage.getSettings();
       if (abort.signal.aborted) return;
-      this.state.model = settings.model;
-      this.state.configured = Boolean(settings.baseURL.trim() && settings.model.trim());
+      const provider = activeProvider(settings);
+      this.state.model = provider.model;
+      this.state.configured = Boolean(provider.baseURL.trim() && provider.model.trim());
       if (!this.state.configured) { this.state.status = 'idle'; return; }
-      await this.ai.stream(settings, translationMessages(this.state.quote), text => {
+      await this.ai.stream(provider, translationMessages(this.state.quote), text => {
         if (this.disposed || abort.signal.aborted) return;
         this.state.content += text; this.emit();
       }, abort.signal);

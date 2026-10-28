@@ -1,11 +1,11 @@
+import { normalizeSettings } from './settings';
 import type { Session, Settings, Source } from './types';
 
-export const DEFAULT_SETTINGS: Settings = {
-  baseURL: 'https://api.openai.com/v1', apiKey: '', model: '', depth: 'standard', hints: true, contextChars: 32000, autoTranslate: true,
-};
 const PREF = 'extensions.paperlens.settings';
 const ORIGIN = 'chrome://paperlens';
 const REALM = 'PaperLens AI service';
+const LEGACY_KEY_USERNAME = 'api-key';
+const keyUsername = (providerID: string) => `provider:${providerID}`;
 
 export class Storage {
   private directory = PathUtils.join(Zotero.DataDirectory.dir, 'paperlens');
@@ -17,24 +17,53 @@ export class Storage {
 
   async getSettings(): Promise<Settings> {
     const value = Zotero.Prefs.get(PREF, true);
-    const settings = { ...DEFAULT_SETTINGS, ...(value ? JSON.parse(value) : {}) };
+    let parsed: unknown;
+    try { parsed = value ? JSON.parse(value) : undefined; } catch { parsed = undefined; }
+    const settings = normalizeSettings(parsed);
     const logins = await Services.logins.searchLoginsAsync({ origin: ORIGIN, httpRealm: REALM });
-    settings.apiKey = logins[0]?.password || '';
+    const keys = new Map<string, string>();
+    for (const login of logins) {
+      if (login.username && !keys.has(login.username)) keys.set(login.username, login.password || '');
+    }
+    const legacyKey = keys.get(LEGACY_KEY_USERNAME) || '';
+    settings.providers = settings.providers.map((provider, index) => ({
+      ...provider,
+      apiKey: keys.get(keyUsername(provider.id)) || (index === 0 ? legacyKey : ''),
+    }));
     return settings;
   }
 
   async saveSettings(settings: Settings) {
+    const normalized = normalizeSettings(settings);
     const existing = await Services.logins.searchLoginsAsync({ origin: ORIGIN, httpRealm: REALM });
-    const info = Components.classes['@mozilla.org/login-manager/loginInfo;1'].createInstance(Components.interfaces.nsILoginInfo);
-    if (settings.apiKey) {
-      info.init(ORIGIN, null, REALM, 'api-key', settings.apiKey.trim(), '', '');
-      if (existing.length) Services.logins.modifyLogin(existing[0], info);
-      else await Services.logins.addLoginAsync(info);
-    } else {
-      for (const login of existing) Services.logins.removeLogin(login);
+    const wanted = new Map(normalized.providers.map(provider => [keyUsername(provider.id), provider]));
+    for (const [username, provider] of wanted) {
+      const matches = existing.filter((login: any) => login.username === username);
+      if (provider.apiKey) {
+        const info = Components.classes['@mozilla.org/login-manager/loginInfo;1']
+          .createInstance(Components.interfaces.nsILoginInfo);
+        info.init(ORIGIN, null, REALM, username, provider.apiKey.trim(), '', '');
+        if (matches.length) {
+          Services.logins.modifyLogin(matches[0], info);
+          for (const duplicate of matches.slice(1)) Services.logins.removeLogin(duplicate);
+        } else await Services.logins.addLoginAsync(info);
+      } else {
+        for (const match of matches) Services.logins.removeLogin(match);
+      }
     }
-    const { apiKey: _apiKey, ...plain } = settings;
-    Zotero.Prefs.set(PREF, JSON.stringify({ ...plain, baseURL: plain.baseURL.trim(), model: plain.model.trim() }), true);
+    for (const login of existing) {
+      if (!wanted.has(login.username)) Services.logins.removeLogin(login);
+    }
+    const plain = {
+      ...normalized,
+      providers: normalized.providers.map(({ apiKey: _apiKey, ...provider }) => ({
+        ...provider,
+        name: provider.name.trim(),
+        baseURL: provider.baseURL.trim(),
+        model: provider.model.trim(),
+      })),
+    };
+    Zotero.Prefs.set(PREF, JSON.stringify(plain), true);
   }
 
   private path(identity: string, suffix: string) { return PathUtils.join(this.directory, `${identity}.${suffix}.json`); }

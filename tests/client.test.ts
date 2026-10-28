@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AIClient, endpointCandidates } from '../src/ai/client';
-import type { Settings } from '../src/types';
+import type { AIConnection } from '../src/types';
 
-const settings: Settings = { baseURL: 'https://relay.example', apiKey: 'test-only-key', model: 'test-model', depth: 'standard', hints: true, contextChars: 32000 };
+const settings: AIConnection = { baseURL: 'https://relay.example', apiKey: 'test-only-key', model: 'test-model' };
 const response = (body: string) => new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
 test('base URLs support explicit version and full endpoint without duplicating v1', () => {
   assert.deepEqual(endpointCandidates('https://relay.example/v1/chat/completions/', 'models'), ['https://relay.example/v1/models']);
@@ -19,6 +19,20 @@ test('model discovery falls back only on a missing endpoint and preserves author
   }) as typeof fetch);
   assert.deepEqual(await client.models(settings), ['model-a', 'model-b']);
   assert.deepEqual(urls, ['https://relay.example/models', 'https://relay.example/v1/models']);
+});
+test('different provider connections use their own endpoints and keys', async () => {
+  const requests: string[] = [];
+  const client = new AIClient((async (url: string, init: RequestInit) => {
+    const headers = init.headers as Record<string, string>;
+    requests.push(`${headers.Authorization}|${url}`);
+    return Response.json({ data: [] });
+  }) as typeof fetch);
+  await client.models({ baseURL: 'https://one.example/v1', apiKey: 'key-one', model: 'one' });
+  await client.models({ baseURL: 'https://two.example/v1', apiKey: 'key-two', model: 'two' });
+  assert.deepEqual(requests, [
+    'Bearer key-one|https://one.example/v1/models',
+    'Bearer key-two|https://two.example/v1/models',
+  ]);
 });
 test('authentication failure does not retry and redacts a reflected key', async () => {
   let requests = 0;

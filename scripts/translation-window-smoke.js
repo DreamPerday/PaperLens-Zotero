@@ -7,7 +7,8 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const wait = async (check, message) => { for (let i = 0; i < 200; i++) { if (check()) return; await pause(50); } throw new Error(message); };
 const assert = (ok, message) => { if (!ok) throw new Error(message); };
 const saved = await plugin.storage.getSettings();
-await plugin.storage.saveSettings({ ...saved, baseURL: 'http://127.0.0.1:18791', model: 'paperlens-fixture', autoTranslate: true });
+await plugin.storage.saveSettings({ ...saved, autoTranslate: true, providers: saved.providers.map(provider =>
+  provider.id === saved.activeProviderId ? { ...provider, baseURL: 'http://127.0.0.1:18791', model: 'paperlens-fixture' } : provider) });
 let reader;
 try {
   await Zotero.Reader.open(original.controller.item.id, undefined, { openInWindow: true, allowDuplicate: true });

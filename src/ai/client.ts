@@ -1,4 +1,4 @@
-import type { ChatMessage, Settings } from '../types';
+import type { AIConnection, ChatMessage } from '../types';
 
 export function endpointCandidates(baseURL: string, path: string): string[] {
   const base = baseURL.trim().replace(/\/+$/, '').replace(/\/(chat\/completions|models)$/, '');
@@ -19,7 +19,7 @@ function contentText(value: unknown): string {
 export class AIClient {
   constructor(private fetcher: typeof fetch = fetch) {}
 
-  private async request(settings: Settings, path: string, body?: object, signal?: AbortSignal) {
+  private async request(settings: AIConnection, path: string, body?: object, signal?: AbortSignal) {
     if (!settings.baseURL.trim()) throw new Error('请先配置 AI Base URL。');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (settings.apiKey.trim()) headers.Authorization = `Bearer ${settings.apiKey.trim()}`;
@@ -46,7 +46,7 @@ export class AIClient {
     throw new Error('AI 服务地址不可用。');
   }
 
-  async models(settings: Settings, signal?: AbortSignal): Promise<string[]> {
+  async models(settings: AIConnection, signal?: AbortSignal): Promise<string[]> {
     const response = await this.request(settings, 'models', undefined, signal);
     const json = await response.json();
     const list = Array.isArray(json) ? json : json.data;
@@ -54,7 +54,7 @@ export class AIClient {
     return [...new Set<string>(list.map((item: any) => typeof item === 'string' ? item : item.id).filter(Boolean))].sort();
   }
 
-  async test(settings: Settings, signal?: AbortSignal) {
+  async test(settings: AIConnection, signal?: AbortSignal) {
     if (!settings.model.trim()) throw new Error('请先填写或选择模型。');
     const response = await this.request(settings, 'chat/completions', {
       model: settings.model.trim(), stream: false,
@@ -65,7 +65,7 @@ export class AIClient {
     return `已连接 ${settings.model}，请保存设置后开始阅读。`;
   }
 
-  async stream(settings: Settings, messages: ChatMessage[], onText: (text: string) => void, signal?: AbortSignal) {
+  async stream(settings: AIConnection, messages: ChatMessage[], onText: (text: string) => void, signal?: AbortSignal) {
     if (!settings.model.trim()) throw new Error('请先在设置中选择模型。');
     const response = await this.request(settings, 'chat/completions', {
       model: settings.model.trim(), messages, stream: true,

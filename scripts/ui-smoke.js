@@ -46,7 +46,9 @@ assert([...doc.querySelectorAll('.answer pre code')].some(node => node.textConte
 assert(doc.querySelector('.answer .citation[data-source-id="b6"]'), 'Citation inside emphasis stopped working');
 const version = Zotero.PaperLens.info.version;
 assert(doc.querySelector(`link[href="ui-${version}.css"]`) && doc.querySelector(`script[src="ui-${version}.js"]`), 'UI assets are not versioned');
-const originalModel = c.settings.model;
+const originalProviderID = c.settings.activeProviderId;
+const originalProvider = () => c.settings.providers.find(provider => provider.id === c.settings.activeProviderId);
+const originalModel = originalProvider().model;
 await c.bridge.refreshModels();
 const trigger = () => doc.querySelector('.model-trigger');
 const openMenu = async () => { if (!doc.querySelector('.model-menu')) trigger().click(); await wait(() => doc.querySelector('.model-search'), 'Model menu did not open'); };
@@ -61,6 +63,16 @@ await openMenu();
 await wait(() => doc.querySelectorAll('.model-option').length >= 3, 'Model menu failed to update');
 assert(doc.defaultView.getComputedStyle(doc.querySelector('.model-menu')).position === 'absolute', 'Model menu styles did not load');
 assert(doc.querySelector('header').getBoundingClientRect().height === headerHeight, 'Model menu pushes down the reading area');
+const providerSelect = doc.querySelector('.model-provider select');
+assert(providerSelect && providerSelect.options.length >= 2, 'Provider switcher is missing saved providers');
+const backupProvider = c.settings.providers.find(provider => provider.id !== originalProviderID);
+Object.getOwnPropertyDescriptor(doc.defaultView.HTMLSelectElement.prototype, 'value').set.call(providerSelect, backupProvider.id);
+providerSelect.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }));
+await wait(() => c.settings.activeProviderId === backupProvider.id && doc.querySelector('.model-provider select').value === backupProvider.id &&
+  !doc.querySelector('.model-provider select').disabled, 'Provider switch from model menu failed');
+await c.bridge.setProvider(originalProviderID);
+await c.bridge.refreshModels();
+await wait(() => doc.querySelectorAll('.model-option').length >= 3, 'Models did not refresh after switching back');
 key('ArrowDown');
 await wait(() => doc.querySelector('.model-search').getAttribute('aria-activedescendant') === 'paperlens-model-option-1', 'Arrow navigation did not move');
 key('ArrowUp');
@@ -126,4 +138,4 @@ try {
 key('Escape');
 await wait(() => !doc.querySelector('.model-menu'), 'Busy menu did not close');
 await c.bridge.setModel(originalModel);
-return { passed: ['annotation without selection', 'chat without selection', 'inline formula', 'display formula', 'matrix formula', 'GFM table', 'code block', 'KaTeX stylesheet', 'whitespace emphasis', 'CJK emphasis', 'literal code unchanged', 'citation inside emphasis', 'versioned assets', 'model menu styles', 'stable header height', 'model search', 'arrow navigation', 'keyboard model switch and focus', 'Escape close', 'search empty state', 'outside click close', 'model refresh error', 'long names and scrollable list', 'keyboard option stays visible', '260/320/480px sidebar layout', 'busy model switch state'] };
+return { passed: ['annotation without selection', 'chat without selection', 'inline formula', 'display formula', 'matrix formula', 'GFM table', 'code block', 'KaTeX stylesheet', 'whitespace emphasis', 'CJK emphasis', 'literal code unchanged', 'citation inside emphasis', 'versioned assets', 'model menu styles', 'stable header height', 'provider switcher', 'model search', 'arrow navigation', 'keyboard model switch and focus', 'Escape close', 'search empty state', 'outside click close', 'model refresh error', 'long names and scrollable list', 'keyboard option stays visible', '260/320/480px sidebar layout', 'busy model switch state'] };

@@ -26,6 +26,15 @@ export function ModelSwitcher({ bridge, state, onSettings }: { bridge: Bridge; s
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setSwitching(false); }
   };
+  const chooseProvider = async (providerID: string) => {
+    if (state.busy || switching || providerID === state.providerID) return;
+    setError(''); setSwitching(true); setQuery(''); setActive(0);
+    try {
+      await bridge.setProvider(providerID);
+      await bridge.refreshModels();
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setSwitching(false); }
+  };
   const show = () => {
     setOpen(true); setQuery(''); setActive(0); setError('');
     if (state.configured && !state.models.length && !state.modelsLoading) void refresh();
@@ -54,12 +63,18 @@ export function ModelSwitcher({ bridge, state, onSettings }: { bridge: Bridge; s
     if (open && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); dismiss(); }
   }}>
     <button ref={trigger} type="button" className="model-trigger" aria-haspopup="dialog" aria-expanded={open}
-      aria-controls="paperlens-model-menu" title={`切换 AI 模型：${state.model || '未配置'}`}
+      aria-controls="paperlens-model-menu" title={`切换服务商和模型：${state.providerName || '未配置'} / ${state.model || '未配置'}`}
       onClick={() => open ? dismiss() : show()}>
-      <span className="model-trigger-label">模型</span><span className="model-name">{state.model || '选择模型'}</span><span className="model-chevron" aria-hidden="true"/>
+      <span className="model-trigger-label">{state.providerName || '模型'}</span><span className="model-name">{state.model || '选择模型'}</span><span className="model-chevron" aria-hidden="true"/>
     </button>
     {open && <section id="paperlens-model-menu" className="model-menu" role="dialog" aria-label="选择 AI 模型">
       <div className="model-menu-heading"><strong>切换模型</strong><span>{state.modelsLoading ? '获取中…' : `${models.length} 个模型`}</span></div>
+      {state.providers.length > 0 && <label className="model-provider"><span>服务商</span><select value={state.providerID} disabled={state.busy || switching}
+        onChange={event => void chooseProvider(event.target.value)}>
+        {state.providers.map(provider => <option key={provider.id} value={provider.id} disabled={!provider.baseURL || !provider.model}>
+          {provider.name}{provider.model ? ` · ${provider.model}` : ' · 未配置'}
+        </option>)}
+      </select></label>}
       <input ref={search} className="model-search" type="search" placeholder="搜索模型名称…" aria-label="搜索 AI 模型"
         role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="paperlens-model-options"
         aria-activedescendant={options[active] ? `paperlens-model-option-${active}` : undefined}
@@ -76,7 +91,7 @@ export function ModelSwitcher({ bridge, state, onSettings }: { bridge: Bridge; s
           <span>{model}</span>{model === state.model && <span className="model-current">当前</span>}
         </button>)}
       </div>
-      {!options.length && <p className="model-empty" role="status">{state.modelsLoading ? '正在获取模型列表…' : query ? '没有匹配的模型，试试其他名称。' : '配置 AI 连接后，获取可用模型。'}</p>}
+      {!options.length && <p className="model-empty" role="status">{state.modelsLoading ? '正在获取模型列表…' : query ? '没有匹配的模型，试试其他名称。' : '配置当前服务商后，获取可用模型。'}</p>}
       {state.configured && !state.modelsLoading && !state.models.length && !error && <p className="model-hint">服务未返回模型列表时，可在连接设置中手动填写模型 ID。</p>}
       {state.busy && <p className="model-hint" role="status">回答生成中，结束或停止后可切换模型。</p>}
       {error && <p className="model-error" role="alert">{error}</p>}

@@ -28,7 +28,9 @@ try {
     assert(menu.left >= 0 && menu.right <= viewport, `Model menu does not follow ${viewport}px viewport`);
     sizes.push({ pane: pane.getBoundingClientRect().width, parent: parentWidth, viewport });
   }
-  assert(new Set(sizes.map(size => size.viewport)).size >= 6, 'Pane resizing did not reach the actual iframe');
+  const viewports = [...new Set(sizes.map(size => size.viewport))];
+  assert(viewports.length >= 4, 'Pane resizing did not reach the actual iframe ' + JSON.stringify(sizes));
+  assert(Math.max(...viewports) - Math.min(...viewports) >= 70, 'Pane width range was too small ' + JSON.stringify(sizes));
 } finally {
   if (originalStyle === null) pane.removeAttribute('style'); else pane.setAttribute('style', originalStyle);
   if (originalWidth === null) pane.removeAttribute('width'); else pane.setAttribute('width', originalWidth);

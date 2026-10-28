@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Markdown } from './markdown';
 import { ModelSwitcher } from './model-switcher';
 import { TranslationPopup } from './translation-popup';
-import type { Bridge, Message, Settings, Task, ViewState } from '../types';
+import type { AIProvider, Bridge, Message, Settings, Task, ViewState } from '../types';
 import './style.css';
 
 const tasks: { id: Task; label: string; description: string; action: string }[] = [
@@ -15,38 +15,120 @@ const tasks: { id: Task; label: string; description: string; action: string }[] 
 
 function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void }) {
   const [settings, setSettings] = useState<Settings>();
+  const [selectedProviderID, setSelectedProviderID] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
-  useEffect(() => { bridge.getSettings().then(setSettings).catch(e => setError(e.message)); }, [bridge]);
-  const update = (key: keyof Settings, value: unknown) => setSettings(current => ({ ...current!, [key]: value }));
+  useEffect(() => {
+    bridge.getSettings().then(value => { setSettings(value); setSelectedProviderID(value.activeProviderId); })
+      .catch(e => setError(e instanceof Error ? e.message : String(e)));
+  }, [bridge]);
+  const update = <K extends keyof Settings>(key: K, value: Settings[K]) =>
+    setSettings(current => ({ ...current!, [key]: value }));
+  const selectedProvider = settings?.providers.find(provider => provider.id === selectedProviderID) || settings?.providers[0];
+  const activeProvider = settings?.providers.find(provider => provider.id === settings.activeProviderId) || settings?.providers[0];
+  const updateProvider = <K extends keyof AIProvider>(key: K, value: AIProvider[K]) => {
+    setSettings(current => current ? {
+      ...current,
+      providers: current.providers.map(provider =>
+        provider.id === selectedProvider?.id ? { ...provider, [key]: value } : provider),
+    } : current);
+  };
+  const chooseProvider = (id: string) => {
+    setSelectedProviderID(id); setModels([]); setShowKey(false); setError(''); setNotice('');
+  };
+  const addProvider = () => {
+    if (!settings) return;
+    let suffix = Date.now().toString(36);
+    while (settings.providers.some(provider => provider.id === `provider-${suffix}`)) suffix += 'x';
+    const provider: AIProvider = {
+      id: `provider-${suffix}`, name: `服务商 ${settings.providers.length + 1}`,
+      baseURL: '', apiKey: '', model: '',
+    };
+    setSettings(current => current ? {
+      ...current,
+      providers: [...current.providers, provider],
+      activeProviderId: provider.id,
+    } : current);
+    chooseProvider(provider.id);
+    setNotice('已新增服务商，填写连接信息并保存后即可使用。');
+  };
+  const removeProvider = () => {
+    if (!settings || !selectedProvider || settings.providers.length <= 1) return;
+    const providers = settings.providers.filter(provider => provider.id !== selectedProvider.id);
+    const activeProviderId = settings.activeProviderId === selectedProvider.id
+      ? providers[0].id
+      : settings.activeProviderId;
+    setSettings({ ...settings, providers, activeProviderId });
+    chooseProvider(activeProviderId);
+    setNotice('服务商已移除，保存设置后生效。');
+  };
   const act = async (name: string, work: () => Promise<void>) => {
     setBusy(name); setError(''); setNotice('');
     try { await work(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(''); }
   };
   return <div className="settings">
     {onBack && <button className="text-button" onClick={onBack}>← 返回论文</button>}
-    <h1>PaperLens 设置</h1><p className="muted">连接你自己的 AI 服务，解读当前论文。</p>
+    <h1>PaperLens 设置</h1><p className="muted">配置多个 OpenAI 兼容服务，并随时切换当前服务商。</p>
     {error && <p role="alert" className="error">{error}</p>}
     {settings ? <>
-      <label>Base URL<input value={settings.baseURL} spellCheck={false} placeholder="https://your-service.example/v1" onChange={e => update('baseURL', e.target.value)}/></label>
-      <p className="field-help">支持 OpenAI 兼容服务和本地模型。可填写服务根地址或 /v1 地址。</p>
-      <label>API Key<div className="input-row"><input value={settings.apiKey} type={showKey ? 'text' : 'password'} autoComplete="off" spellCheck={false} placeholder="本地无密钥服务可留空" onChange={e => update('apiKey', e.target.value)}/><button aria-label={showKey ? '隐藏密钥' : '显示密钥'} onClick={() => setShowKey(!showKey)}>{showKey ? '隐藏' : '显示'}</button></div></label>
-      <label>模型<div className="input-row"><input list="paperlens-models" value={settings.model} placeholder="选择或填写模型 ID" onChange={e => update('model', e.target.value)}/><button disabled={Boolean(busy)} onClick={() => act('models', async () => { const list = await bridge.models(settings); setModels(list); setNotice(`已获取 ${list.length} 个模型，可在模型输入框中选择。`); })}>{busy === 'models' ? '获取中…' : '获取模型'}</button></div></label>
+      <div className="provider-toolbar">
+        <label>服务商<select value={selectedProvider?.id || ''} onChange={e => chooseProvider(e.target.value)}>
+          {settings.providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name || '未命名服务商'}</option>)}
+        </select></label>
+        <button disabled={Boolean(busy)} onClick={addProvider}>+ 新增服务商</button>
+      </div>
+      {selectedProvider && <section className="provider-card" aria-label="服务商连接设置">
+        <div className="provider-card-heading">
+          <div><strong>{selectedProvider.name || '未命名服务商'}</strong>{selectedProvider.id === settings.activeProviderId && <span className="provider-active">当前使用</span>}</div>
+          <div>
+            {selectedProvider.id !== settings.activeProviderId && <button className="text-button" disabled={Boolean(busy)}
+              onClick={() => { update('activeProviderId', selectedProvider.id); setNotice(`已将 ${selectedProvider.name || '该服务商'} 设为当前，保存后生效。`); }}>设为当前</button>}
+            <button className="text-button danger-button" disabled={Boolean(busy) || settings.providers.length <= 1} onClick={removeProvider}>删除</button>
+          </div>
+        </div>
+        <label>显示名称<input value={selectedProvider.name} maxLength={80} placeholder="例如：OpenAI、公司中转站" onChange={e => updateProvider('name', e.target.value)}/></label>
+        <label>Base URL<input value={selectedProvider.baseURL} spellCheck={false} placeholder="https://your-service.example/v1" onChange={e => updateProvider('baseURL', e.target.value)}/></label>
+        <p className="field-help">每个服务商可使用不同地址。可填写服务根地址或 /v1 地址。</p>
+        <label>API Key<div className="input-row"><input value={selectedProvider.apiKey} type={showKey ? 'text' : 'password'} autoComplete="off" spellCheck={false} placeholder="本地无密钥服务可留空" onChange={e => updateProvider('apiKey', e.target.value)}/><button aria-label={showKey ? '隐藏密钥' : '显示密钥'} onClick={() => setShowKey(!showKey)}>{showKey ? '隐藏' : '显示'}</button></div></label>
+        <label>模型<div className="input-row"><input list="paperlens-models" value={selectedProvider.model} placeholder="选择或填写模型 ID" onChange={e => updateProvider('model', e.target.value)}/><button disabled={Boolean(busy) || !selectedProvider.baseURL.trim()} onClick={() => act('models', async () => {
+          const list = await bridge.models(selectedProvider); setModels(list); setNotice(`已从 ${selectedProvider.name || '该服务商'} 获取 ${list.length} 个模型。`);
+        })}>{busy === 'models' ? '获取中…' : '获取模型'}</button></div></label>
       <datalist id="paperlens-models">{models.map(model => <option key={model} value={model}/>)}</datalist>
-      {models.length > 0 && <label>可用模型<select value={models.includes(settings.model) ? settings.model : ''} onChange={e => update('model', e.target.value)}><option value="" disabled>从服务返回的模型中选择</option>{models.map(model => <option key={model}>{model}</option>)}</select></label>}
+      {models.length > 0 && <label>可用模型<select value={models.includes(selectedProvider.model) ? selectedProvider.model : ''} onChange={e => updateProvider('model', e.target.value)}><option value="" disabled>从服务返回的模型中选择</option>{models.map(model => <option key={model}>{model}</option>)}</select></label>}
       <p className="field-help">获取列表失败时仍可手动填写模型 ID。</p>
-      <label>默认解释深度<select value={settings.depth} onChange={e => update('depth', e.target.value)}><option value="simple">简明</option><option value="standard">标准</option><option value="deep">深入</option></select></label>
+      <div className="provider-card-actions">
+        <button disabled={Boolean(busy) || !selectedProvider.baseURL.trim() || !selectedProvider.model.trim()}
+          onClick={() => act('test', async () => setNotice(await bridge.testConnection(selectedProvider)))}>{busy === 'test' ? '测试中…' : '测试此服务商'}</button>
+        {activeProvider && <span>当前使用：{activeProvider.name || '未命名服务商'} / {activeProvider.model || '未填模型'}</span>}
+      </div>
+      </section>}
+      <label>默认解释深度<select value={settings.depth} onChange={e => update('depth', e.target.value as Settings['depth'])}><option value="simple">简明</option><option value="standard">标准</option><option value="deep">深入</option></select></label>
       <label className="check"><input type="checkbox" checked={settings.hints} onChange={e => update('hints', e.target.checked)}/>显示阅读提示与示例问题</label>
       <label className="check"><input type="checkbox" checked={settings.autoTranslate !== false} onChange={e => update('autoTranslate', e.target.checked)}/>选中 PDF 原文后自动显示翻译浮窗</label>
       <p className="field-help">默认译为简体中文，沿用当前模型。选文会发送到配置的 AI 服务；关闭后可点击选文工具栏的“翻译”。</p>
       <details><summary>高级设置</summary><label>单次原文上下文预算（字符）<input type="number" min="4000" max="160000" step="4000" value={settings.contextChars} onChange={e => update('contextChars', Number(e.target.value))}/></label><p className="field-help">长文概览会分段处理全文。预算应与模型实际上下文容量匹配。</p></details>
-      <p className="privacy">密钥保存在本机凭据存储。主动提问或分析时，会将相关论文文字发送给此处配置的服务。</p>
-      <div className="actions"><button disabled={Boolean(busy) || !settings.model.trim()} onClick={() => act('test', async () => setNotice(await bridge.testConnection(settings)))}>{busy === 'test' ? '测试中…' : '测试连接'}</button><button className="primary" disabled={Boolean(busy) || !settings.baseURL.trim() || !settings.model.trim()} onClick={() => act('save', async () => {
+      <p className="privacy">每个服务商的密钥分别保存在本机凭据存储。主动提问、分析或自动翻译时，只会将相关内容发送给当前选中的服务商。</p>
+      <div className="actions"><button className="primary" disabled={Boolean(busy) || !activeProvider?.baseURL.trim() || !activeProvider?.model.trim()} onClick={() => act('save', async () => {
         if (!Number.isFinite(settings.contextChars) || settings.contextChars < 4000 || settings.contextChars > 160000) throw new Error('上下文预算请设为 4000–160000 字符。');
-        await bridge.saveSettings(settings); setNotice('设置已保存。');
+        const prepared: Settings = {
+          ...settings,
+          providers: settings.providers.map(provider => ({
+            ...provider,
+            name: provider.name.trim() || '未命名服务商',
+            baseURL: provider.baseURL.trim(),
+            model: provider.model.trim(),
+            apiKey: provider.apiKey.trim(),
+          })),
+        };
+        await bridge.saveSettings(prepared);
+        const saved = await bridge.getSettings();
+        setSettings(saved); setSelectedProviderID(saved.providers.some(provider => provider.id === selectedProvider?.id)
+          ? selectedProvider!.id : saved.activeProviderId);
+        setModels([]);
+        setNotice('设置已保存。');
       })}>{busy === 'save' ? '保存中…' : '保存设置'}</button></div>
       {notice && <p role="status" className="notice">{notice}</p>}
     </> : <p>正在读取设置…</p>}
@@ -120,7 +202,7 @@ function App({ bridge }: { bridge: Bridge }) {
     }}>{message.content}</Markdown>
     {!message.content && message.status === 'streaming' && <p className="muted" role="status">正在思考…</p>}
     {message.error && <p className="error" role="alert">{message.error}</p>}
-    <div className="answer-meta">{message.model}{message.range && ` · ${message.range}`}</div>
+    <div className="answer-meta">{[message.provider, message.model, message.range].filter(Boolean).join(' · ')}</div>
     {message.status !== 'streaming' && <div className="message-actions">
       {message.content && <><button className="text-button" onClick={() => { bridge.copy(message.content); setCopied(message.id); }}>{copied === message.id ? '已复制' : '复制'}</button>
       {message.noteID ? <button className="text-button" onClick={() => action(() => bridge.openNote(message.noteID!))}>打开笔记 ↗</button> :
@@ -153,7 +235,7 @@ function App({ bridge }: { bridge: Bridge }) {
       <div className="composer-bottom"><label className="depth">解释深度<select aria-label="解释深度" value={state.depth} onChange={e => action(() => bridge.setDepth(e.target.value as Settings['depth']))}><option value="simple">简明</option><option value="standard">标准</option><option value="deep">深入</option></select></label>
       {state.busy ? <button onClick={() => bridge.stop()}>停止生成</button> : <button className="primary" disabled={!state.configured || !state.readable || state.loading || state.task === 'chat' && !draft.trim() || state.task === 'verify' && !draft.trim() && !state.quote} onClick={send}>{annotationAction}</button>}</div>
     </div>
-    <footer aria-live="polite">{state.notice || (state.model ? `${state.model} · Ctrl/⌘ + Enter 发送` : '配置 AI 后开始阅读')}</footer>
+    <footer aria-live="polite">{state.notice || (state.model ? `${state.providerName} · ${state.model} · Ctrl/⌘ + Enter 发送` : '配置 AI 后开始阅读')}</footer>
   </div>;
 }
 

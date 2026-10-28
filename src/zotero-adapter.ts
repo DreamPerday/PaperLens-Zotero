@@ -111,7 +111,7 @@ export async function saveNote(item: any, message: Message, question: Message | 
     `<h2>解读</h2><p>${text.replace(/\n/g, '<br/>')}</p>` +
     (citations.length ? `<h2>原文依据</h2>${citations.map(b => `<p><a href="${escape(pageLink(item, b.location))}">第${escape(b.pageLabel)}页 · ${b.id}</a>：${escape(b.text.slice(0, 550))}</p>`).join('')}` : '') +
     `<p><a href="${escape(pageLink(item, { pageIndex: message.quote?.location.pageIndex || 0 }))}">打开来源 PDF</a></p>` +
-    `<p>模型：${escape(message.model || '')} · ${escape(message.createdAt)} · ${escape(message.range || '')}</p></div>`);
+    `<p>${message.provider ? `服务商：${escape(message.provider)} · ` : ''}模型：${escape(message.model || '')} · ${escape(message.createdAt)} · ${escape(message.range || '')}</p></div>`);
   await note.saveTx();
   return note.id as number;
 }

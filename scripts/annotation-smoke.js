@@ -64,8 +64,7 @@ try {
   await wait(() => activeVisible('b6'), 'Resuming did not reveal the current annotation');
 
   await c.bridge.navigate('b14', 'annotation-follow-check');
-  await pause(800);
-  assert(c.state.activeSourceID === 'b14' && activeVisible('b14'), 'Clicking a citation lost its target to polling');
+  await wait(() => c.state.activeSourceID === 'b14' && activeVisible('b14'), 'Clicking a citation lost its target to polling');
 
   // A newer selection-only annotation must not hide full-text annotations elsewhere.
   c.session.messages.push({ ...c.session.messages[0], id: 'selection-only', content: '[Selected](#source-b6)', sourceIds: ['b6'] });

@@ -1,7 +1,9 @@
 import { AIClient } from './ai/client';
+import { discardIncompleteAnswers } from './history';
 import { ANNOTATION_FORMAT, buildMessages, chunkBlocks, groupSummaries, sourceText, SYSTEM } from './reading/context';
 import { locateBlock } from './reading/position';
-import { DEFAULT_SETTINGS, Storage } from './storage';
+import { activeProvider, DEFAULT_SETTINGS } from './settings';
+import { Storage } from './storage';
 import { extractSource, findReader, identityFor, navigateReader, openReader, readingCursor, readingPosition, saveNote } from './zotero-adapter';
 import type { Bridge, Depth, Message, Quote, Session, Settings, Source, Task, ViewState } from './types';
 
@@ -21,7 +23,9 @@ export class ReaderController {
   item: any;
   settings: Settings = { ...DEFAULT_SETTINGS };
   state: ViewState = { title: 'PaperLens', identity: '', task: 'chat', messages: [], draft: '', depth: 'standard',
-    hints: true, model: '', configured: false, readable: false, loading: false, busy: false, models: [], modelsLoading: false,
+    hints: true, model: '', providerID: DEFAULT_SETTINGS.activeProviderId, providerName: DEFAULT_SETTINGS.providers[0].name,
+    providers: DEFAULT_SETTINGS.providers.map(({ id, name, baseURL, model }) => ({ id, name, baseURL, model })),
+    configured: false, readable: false, loading: false, busy: false, models: [], modelsLoading: false,
     error: '', notice: '', sourceInfo: '', returnAvailable: false };
   private listeners = new Set<(state: ViewState) => void>();
   private abort?: AbortController;
@@ -53,8 +57,13 @@ export class ReaderController {
         }
       },
       refreshSource: () => this.load(this.item, this.reader, true), openSettings: () => Zotero.Utilities.Internal.openPreferences('paperlens-settings'),
-      refreshModels: () => this.refreshModels(), setModel: model => this.setModel(model),
-      getSettings: () => storage.getSettings(), saveSettings: async settings => { await storage.saveSettings(settings); this.settings = { ...settings }; this.emit(); this.notifyAll(); },
+      refreshModels: () => this.refreshModels(), setModel: model => this.setModel(model), setProvider: id => this.setProvider(id),
+      getSettings: () => storage.getSettings(), saveSettings: async settings => {
+        await storage.saveSettings(settings);
+        this.settings = await storage.getSettings();
+        this.availableModels = [];
+        this.emit(); this.notifyAll();
+      },
       models: settings => ai.models(settings), testConnection: settings => ai.test(settings),
       copy: text => Components.classes['@mozilla.org/widget/clipboardhelper;1'].getService(Components.interfaces.nsIClipboardHelper).copyString(text),
     };
@@ -62,10 +71,13 @@ export class ReaderController {
   }
 
   private snapshot(): ViewState {
+    const provider = activeProvider(this.settings);
     return { ...this.state, messages: [...(this.session?.messages || [])],
-      depth: this.settings.depth, hints: this.settings.hints, model: this.settings.model,
+      depth: this.settings.depth, hints: this.settings.hints, model: provider.model,
+      providerID: provider.id, providerName: provider.name,
+      providers: this.settings.providers.map(({ id, name, baseURL, model }) => ({ id, name, baseURL, model })),
       models: [...this.availableModels], modelsLoading: this.state.modelsLoading,
-      configured: Boolean(this.settings.baseURL && this.settings.model), readable: Boolean(this.source),
+      configured: Boolean(provider.baseURL && provider.model), readable: Boolean(this.source),
       busy: ReaderController.requests.has(this.state.identity) };
   }
   emit() { if (!this.disposed) for (const listener of this.listeners) listener(this.snapshot()); }
@@ -92,14 +104,22 @@ export class ReaderController {
       candidate.sourceIds?.includes(block.id) && candidate.content.includes('](#source-' + block.id + ')'));
     if (this.setActiveSource(message ? block?.id : undefined, message?.id)) this.emit();
   }
-  async refreshSettings() { this.settings = await this.storage.getSettings(); this.emit(); }
+  async refreshSettings() {
+    const previous = activeProvider(this.settings);
+    const previousConnection = [previous.id, previous.baseURL, previous.apiKey].join('\n');
+    this.settings = await this.storage.getSettings();
+    const current = activeProvider(this.settings);
+    if ([current.id, current.baseURL, current.apiKey].join('\n') !== previousConnection) this.availableModels = [];
+    this.emit();
+  }
   async refreshModels() {
     if (this.state.modelsLoading) return;
     const settings = await this.storage.getSettings();
-    if (!settings.baseURL.trim()) throw new Error('请先配置 AI Base URL。');
+    const provider = activeProvider(settings);
+    if (!provider.baseURL.trim()) throw new Error('请先配置当前服务商的 Base URL。');
     this.state.modelsLoading = true; this.emit();
     try {
-      this.availableModels = await this.ai.models(settings);
+      this.availableModels = await this.ai.models(provider);
       this.state.notice = `已加载 ${this.availableModels.length} 个模型。`;
     } finally {
       this.state.modelsLoading = false; this.emit();
@@ -107,13 +127,29 @@ export class ReaderController {
   }
   async setModel(model: string) {
     const value = model.trim();
-    if (!value || value === this.settings.model) return;
+    if (!value || value === activeProvider(this.settings).model) return;
     if (ReaderController.requests.has(this.state.identity)) throw new Error('请先停止当前回答，再切换模型。');
-    const settings = { ...await this.storage.getSettings(), model: value };
+    const settings = await this.storage.getSettings();
+    settings.providers = settings.providers.map(provider =>
+      provider.id === settings.activeProviderId ? { ...provider, model: value } : provider);
     await this.storage.saveSettings(settings);
-    this.settings = settings;
+    this.settings = await this.storage.getSettings();
     if (!this.availableModels.includes(value)) this.availableModels = [value, ...this.availableModels];
     this.state.notice = `已切换模型：${value}`;
+    this.emit(); this.notifyAll();
+  }
+  async setProvider(id: string) {
+    const settings = await this.storage.getSettings();
+    const provider = settings.providers.find(item => item.id === id);
+    if (!provider) throw new Error('未找到要切换的服务商。');
+    if (!provider.baseURL || !provider.model) throw new Error('请先在设置中补全该服务商的 Base URL 和模型。');
+    if (provider.id === settings.activeProviderId) return;
+    if (ReaderController.requests.has(this.state.identity)) throw new Error('请先停止当前回答，再切换服务商。');
+    settings.activeProviderId = provider.id;
+    await this.storage.saveSettings(settings);
+    this.settings = await this.storage.getSettings();
+    this.availableModels = [];
+    this.state.notice = `已切换服务商：${provider.name}`;
     this.emit(); this.notifyAll();
   }
   private persistDraft() {
@@ -183,8 +219,9 @@ export class ReaderController {
     try {
       this.settings = await this.storage.getSettings();
       if (abort.signal.aborted) return;
-      if (!this.settings.model) { this.bridge.openSettings(); return; }
-      const settings = { ...this.settings };
+      const provider = activeProvider(this.settings);
+      if (!provider.baseURL || !provider.model) { this.bridge.openSettings(); return; }
+      const settings = this.settings;
       answer = retryMessage || { id: makeID(), role: 'assistant', content: '', task, status: 'streaming', createdAt: new Date().toISOString() };
       let history: Message[];
       if (retryMessage) {
@@ -193,6 +230,7 @@ export class ReaderController {
         text = user.content; history = session.messages.slice(0, index - 1);
         answer.quote = user.quote;
       } else {
+        session.messages = discardIncompleteAnswers(session.messages, task);
         history = [...session.messages];
         const quote = task === 'overview' ? undefined : this.state.quote;
         session.messages.push({ id: makeID(), role: 'user', content: text, quote, status: 'complete', task, createdAt: new Date().toISOString() });
@@ -200,7 +238,8 @@ export class ReaderController {
         this.state.draft = ''; session.draft = '';
       }
       const response = answer;
-      Object.assign(response, { content: '', status: 'streaming', error: undefined, noteID: undefined, model: settings.model, sourceVersion: source.version, sourceIds: [] });
+      Object.assign(response, { content: '', status: 'streaming', error: undefined, noteID: undefined, model: provider.model,
+        provider: provider.name, sourceVersion: source.version, sourceIds: [] });
       this.emit(); await this.storage.saveSession(session);
       // Re-check before every request: a replaced PDF invalidates old positions.
       if (await item.attachmentHash !== source.version) throw new Error('PDF 已更新，请重新读取原文后再分析。');
@@ -217,7 +256,7 @@ export class ReaderController {
           response.range = `部分完成 · ${i}/${chunks.length} 部分`;
           progress(`正在分析第 ${i + 1}/${chunks.length} 部分；已完成 ${i} 部分`);
           let summary = '';
-          await this.ai.stream(settings, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
+          await this.ai.stream(provider, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
             `${segmentInstruction} 控制在 ${fullTextAnnotation ? 2200 : 1200} 字内。\n${sourceText(chunks[i])}` }], chunk => { summary += chunk; }, abort.signal);
           summaries.push(summary);
           response.content = summaries.map((s, index) => `### ${fullTextAnnotation ? '全文注解分段' : '原文分段'} ${index + 1}\n${s}`).join('\n\n');
@@ -238,13 +277,13 @@ export class ReaderController {
             for (let i = 0; i < groups.length; i++) {
               progress(`正在合并摘要 · 第 ${round + 1} 轮 · ${i + 1}/${groups.length}`);
               let result = '';
-              await this.ai.stream(settings, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
+              await this.ai.stream(provider, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
                 `合并以下片段摘要，保留研究问题、方法、结果、限制和来源编号，控制在 ${Math.min(1200, Math.floor(settings.contextChars / 4))} 字内。\n${groups[i]}` }], chunk => { result += chunk; }, abort.signal);
               reduced.push(result);
             }
             groups = groupSummaries(reduced, settings.contextChars);
           }
-          await this.ai.stream(settings, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
+          await this.ai.stream(provider, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
             `${text}\n解释深度：${settings.depth}。下文为按顺序分析全文所得的摘要，请合并去重，并保留有效来源编号：\n${groups[0]}` }],
           chunk => { final += chunk; response.content = final; this.emit(); }, abort.signal);
           }
@@ -253,7 +292,7 @@ export class ReaderController {
       } else {
         const request = buildMessages(source, task === 'overview' ? [] : history, text, response.quote, task, settings.depth, settings.contextChars);
         response.sourceIds = request.blocks.map(b => b.id); response.range = request.range;
-        await this.ai.stream(settings, request.messages, chunk => { response.content += chunk; this.emit(); }, abort.signal);
+        await this.ai.stream(provider, request.messages, chunk => { response.content += chunk; this.emit(); }, abort.signal);
       }
       response.status = 'complete';
       progress('点击回答中的来源可以回到原文。');

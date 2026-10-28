@@ -2,18 +2,18 @@
 
 帮助读懂和核对论文的 AI 阅读助手。直接使用 Zotero 的 PDF 阅读器，在常驻侧栏里提问、精读、生成概览和核对论文依据。
 
-当前版本为 **0.3.0**，新增选文自动翻译浮窗；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前版本为 **0.3.1**，在选文自动翻译基础上新增多服务商配置和失败内容替换；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
 
 ## 安装与开始阅读
 
-1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.0.xpi`。从源码构建时，文件位于 `dist/`。
+1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.1.xpi`。从源码构建时，文件位于 `dist/`。
 2. 打开 Zotero → **工具 → 插件**，点击齿轮 → **从文件安装插件**，选择此 XPI。
 3. 打开一份本机 PDF，点击阅读器工具栏的 **PaperLens**，或右侧 PaperLens 图标。
-4. 在侧栏的 **设置** 中填写 AI 服务的 **Base URL、API Key、模型 ID**。也可以从 Zotero 设置左侧的 **PaperLens** 进入。
-5. 点击 **获取模型** 后选择模型，或手动填写。**测试连接** 使用当前表单；测试成功后点击 **保存设置**。
+4. 在侧栏的 **设置** 中添加服务商，并填写各自的 **显示名称、Base URL、API Key、模型 ID**。可以保存多个服务商；从 Zotero 设置左侧的 **PaperLens** 也可以进入。
+5. 选择要测试的服务商，点击 **获取模型** 后选择模型，或手动填写。**测试此服务商** 使用当前表单；测试成功后点击 **保存设置**。
 6. 在 PDF 中选中句子或段落，点击选文工具中的 **问 PaperLens**，输入自己的问题并发送。
 
-支持 OpenAI 兼容中转站和本地模型，Base URL 可以是服务根地址或 `/v1` 地址。服务未开放模型列表时，手动填写模型 ID 即可。模型列表只代表服务公布的 ID，实际可用性通过连接测试确认。
+支持配置多个 OpenAI 兼容服务商、中转站和本地模型。每个服务商拥有独立的 Base URL、Key、模型和显示名称，可分别测试；在设置页点击 **设为当前** 后，问答、概览、注解和翻译只使用选中的服务商。Base URL 可以是服务根地址或 `/v1` 地址。服务未开放模型列表时，手动填写模型 ID 即可。
 
 插件不需要启动现有桌面版、Electron、Python 后端或 PaddleOCR，也不需要 PaddleOCR Key。扫描件须先获得可用文字层。
 
@@ -33,13 +33,13 @@
 点击回答中的页码依据可在 PDF 中定位并临时高亮，**返回阅读位置** 返回跳转前的位置。支持独立 PDF 窗口的嵌入式侧栏，可拖动分隔条调整宽度，收起后从工具栏重新打开。
 在“注解”任务中，默认开启“跟随正文”：滚动 PDF、翻页或跳转时，注解区会按当前阅读位置自动滚到对应段落的来源标题并高亮。点击“跟随正文”可暂停，再次点击会恢复并定位当前段落；浏览历史时暂停自动滚动。点击注解来源仍会反向定位正文。联动使用现有注解的来源引用，不额外调用 AI；没有来源引用的旧注解需要重新生成。
 
-侧栏顶部显示紧凑的 **模型** 按钮，点击后可搜索模型名称、查看当前模型并切换；支持方向键选择、Enter 确认、Esc 关闭。切换后立即保存，不需要进入设置页；Base URL 或 Key 变化仍在 **设置** 中修改。回答生成期间需先停止或等待结束，再切换模型。菜单采用浮层，展开时不会挤压阅读区，长模型列表可滚动。**历史** 显示本篇全部任务记录。**清空本篇记录** 需要在侧栏内确认，已保存的 Zotero 笔记保留。**重读原文** 重新提取 PDF 文字；替换 PDF 后，旧解读保留，旧引用禁止沿用。
+侧栏顶部显示紧凑的当前服务商和 **模型** 按钮，点击后可切换服务商、刷新模型列表、搜索模型名称并切换当前模型；支持方向键选择、Enter 确认、Esc 关闭。切换后立即保存，不需要进入设置页；Base URL 或 Key 变化仍在 **设置** 中修改。回答生成期间需先停止或等待结束，再切换服务商或模型。菜单采用浮层，展开时不会挤压阅读区，长模型列表可滚动。**历史** 显示本篇全部任务记录。重新发起同一任务的问答、概览或注解时，会移除该任务此前的失败、停止或空白回答及其对应问题，完整历史不受影响。**清空本篇记录** 需要在侧栏内确认，已保存的 Zotero 笔记保留。**重读原文** 重新提取 PDF 文字；替换 PDF 后，旧解读保留，旧引用禁止沿用。
 
 **保存为笔记** 为论文创建 Zotero 子笔记，包含问题、解读、选文、页级来源链接、模型和生成时间。独立附件会创建独立笔记。插件内引用保留区域坐标；普通笔记链接提供页级回跳，不会为每条 AI 引用创建原生高亮。
 
 ## 选文翻译浮窗
 
-配置 AI 后，在 PDF 中选中句子或段落，停留约半秒即可自动显示简体中文译文。翻译沿用当前模型，不需要打开侧栏或输入问题；请求只包含当前选文，不会读取整篇论文作为翻译上下文，也不会写入问答历史。
+配置 AI 后，在 PDF 中选中句子或段落，停留约半秒即可自动显示简体中文译文。翻译沿用当前服务商和当前模型，不需要打开侧栏或输入问题；请求只包含当前选文，不会读取整篇论文作为翻译上下文，也不会写入问答历史。
 
 浮窗支持流式译文、Markdown 与数学公式、展开原文、复制、停止和重试。拖动标题栏可移动浮窗，长译文在窗内滚动。点击关闭、按 Esc、点击原文其他位置或滚动 PDF 可收起浮窗；未完成的翻译会取消。重新选文时，旧请求会取消，新译文只对应新的选区。
 
@@ -47,8 +47,8 @@
 
 ## 数据与隐私
 
-- AI Key 使用 Zotero 所在环境的 Mozilla 凭据存储 `Services.logins`，不写入普通配置、笔记或 XPI。
-- 服务地址、模型、深度和上下文预算保存在 `extensions.paperlens.settings` 偏好中。
+- 每个服务商的 AI Key 分别使用 Zotero 所在环境的 Mozilla 凭据存储 `Services.logins`，不写入普通配置、笔记或 XPI。
+- 服务商列表、显示名称、服务地址、模型、当前服务商、深度、上下文预算和自动翻译偏好保存在 `extensions.paperlens.settings` 偏好中。
 - 原文索引及阅读记录存放在 **Zotero 数据目录下的 `paperlens/`**，按 `libraryID_attachmentKey` 区分附件，使用 JSON 保存。
 - 论文问答、精读等主动操作会向用户配置的服务发送相关原文及近期对话；开启自动翻译时，选中 PDF 文字会将选文发送到同一服务。模型发现和连接测试同样会访问配置的服务。
 - 阅读历史只在本机保存。主动保存的 Zotero 笔记遵循用户的 Zotero 同步设置；卸载插件会保留本机阅读记录和笔记。
@@ -75,7 +75,7 @@ npm test
 npm run build
 ```
 
-构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.0.xpi`。KaTeX 样式和字体会随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
+构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.1.xpi`。KaTeX 样式和字体会随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
 
 | 文件 | 负责的能力 |
 | --- | --- |
@@ -86,8 +86,10 @@ npm run build
 | `src/reading/context.ts` | 上下文选取、四种任务提示词、长文分段 |
 | `src/ai/client.ts` | 兼容 API、模型列表、流式响应和停止 |
 | `src/controller.ts` | 任务、历史、停止重试与来源关联 |
+| `src/history.ts` | 新请求替换同任务失败或中断的旧回答 |
 | `src/translation/` | 选文翻译请求、浮窗定位、拖动与生命周期 |
-| `src/storage.ts` | 设置、凭据、本地索引与历史 |
+| `src/settings.ts` | 多服务商设置、旧配置迁移和当前服务商选择 |
+| `src/storage.ts` | 多服务商凭据、本地索引与历史 |
 | `src/ui/` | 侧栏内容和交互 |
 
 后续优先扩展图表按需理解、原文查找、可选 OCR 和跨论文核对。新增能力应先接入同一套附件身份、原文位置与明确触发动作，避免增加第二套文献管理界面。
@@ -113,6 +115,7 @@ node scripts/command.mjs scripts/native-smoke.js
 node scripts/command.mjs scripts/ui-smoke.js
 node scripts/command.mjs scripts/annotation-smoke.js
 node scripts/command.mjs scripts/resize-smoke.js
+node scripts/command.mjs scripts/history-smoke.js
 node scripts/command.mjs scripts/translation-smoke.js
 node scripts/command.mjs scripts/translation-drag-smoke.js
 node scripts/command.mjs scripts/translation-window-smoke.js
