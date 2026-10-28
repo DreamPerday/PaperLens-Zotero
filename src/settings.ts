@@ -1,4 +1,4 @@
-import type { AIProvider, Depth, Settings } from './types';
+import type { AIProvider, Depth, EasyScholarDatasetOption, Settings } from './types';
 
 export const DEFAULT_PROVIDER: AIProvider = {
   id: 'default',
@@ -19,6 +19,9 @@ export const DEFAULT_SETTINGS: Settings = {
   offlineDictionary: true,
   translationKeepOpen: true,
   easyScholarApiKey: '',
+  easyScholarShowAllDatasets: true,
+  easyScholarDatasetKeys: [],
+  easyScholarDatasetCatalog: [],
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -29,6 +32,45 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function datasetKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value) {
+    const key = text(item).replace(/[=\u0000-\u001f]/g, '').slice(0, 80);
+    const normalized = key.toLowerCase();
+    if (!key || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(key);
+  }
+  return result;
+}
+
+function datasetCatalog(value: unknown): EasyScholarDatasetOption[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: EasyScholarDatasetOption[] = [];
+  for (const item of value) {
+    const candidate = record(item);
+    const key = text(candidate.key).replace(/[=\u0000-\u001f]/g, '').slice(0, 80);
+    const normalized = key.toLowerCase();
+    if (!key || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push({ key, name: text(candidate.name).slice(0, 120) || key });
+  }
+  return result;
+}
+
+export function mergeEasyScholarDatasetCatalog(
+  current: EasyScholarDatasetOption[],
+  incoming: Array<{ key: string; name?: string }>,
+): EasyScholarDatasetOption[] {
+  const merged = new Map<string, EasyScholarDatasetOption>();
+  for (const option of datasetCatalog(current)) merged.set(option.key.toLowerCase(), option);
+  for (const option of datasetCatalog(incoming)) merged.set(option.key.toLowerCase(), option);
+  return [...merged.values()].slice(0, 200);
 }
 
 function providerName(baseURL: string, fallback: string): string {
@@ -97,6 +139,11 @@ export function normalizeSettings(value: unknown): Settings {
       ? raw.translationKeepOpen
       : DEFAULT_SETTINGS.translationKeepOpen,
     easyScholarApiKey: text(raw.easyScholarApiKey),
+    easyScholarShowAllDatasets: typeof raw.easyScholarShowAllDatasets === 'boolean'
+      ? raw.easyScholarShowAllDatasets
+      : DEFAULT_SETTINGS.easyScholarShowAllDatasets,
+    easyScholarDatasetKeys: datasetKeys(raw.easyScholarDatasetKeys),
+    easyScholarDatasetCatalog: datasetCatalog(raw.easyScholarDatasetCatalog),
   };
 }
 

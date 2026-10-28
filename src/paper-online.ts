@@ -1,7 +1,8 @@
 import {
-  lookupConferenceRank, publicationField, resolvePaperItem, saveConferenceRanks, saveJournal, saveQuartile,
-  saveJournalRanks,
+  easyScholarRankName, isEasyScholarStandardKey, lookupConferenceRank, publicationField, resolvePaperItem,
+  saveConferenceRanks, saveEasyScholarRanks, saveJournal, saveJournalRanks, saveQuartile,
 } from './paper-metadata';
+import type { EasyScholarDataset } from './paper-metadata';
 
 export type LookupType = 'conference' | 'journal' | 'preprint' | 'other';
 
@@ -17,6 +18,8 @@ export interface PublicationLookup {
   jcr?: string;
   cas?: string;
   ranks?: Record<string, string>;
+  customDatasets?: EasyScholarDataset[];
+  datasetCatalog?: EasyScholarDataset[];
   rankSource?: string;
   rankError?: string;
 }
@@ -158,21 +161,50 @@ function rankValue(ranks: Record<string, string>, ...keys: string[]): string {
   return '';
 }
 
-async function easyScholarLookup(fetcher: Fetcher, apiKey: string, publicationName: string) {
+export async function easyScholarLookup(fetcher: Fetcher, apiKey: string, publicationName: string) {
   const url = `https://easyscholar.cc/open/getPublicationRank?secretKey=${encodeURIComponent(apiKey)}` +
     `&publicationName=${encodeURIComponent(publicationName)}`;
   const data = await json(fetcher, url);
   if (data.code !== undefined && data.code !== 200) throw new Error(data.msg || `EasyScholar HTTP ${data.code}`);
-  if (!data?.data) return { ranks: {} as Record<string, string>, jcr: '', cas: '', ccf: '' };
+  if (!data?.data) return {
+    ranks: {} as Record<string, string>, customDatasets: [] as EasyScholarDataset[],
+    jcr: '', cas: '', ccf: '',
+  };
   const ranks: Record<string, string> = { ...(data.data.officialRank?.all || {}) };
   const custom = data.data.customRank;
+  const customDatasets: EasyScholarDataset[] = [];
+  if (Array.isArray(custom?.rankInfo)) {
+    for (const info of custom.rankInfo) {
+      const key = String(info?.abbName || '').trim();
+      if (!key) continue;
+      const levels = ['oneRankText', 'twoRankText', 'threeRankText', 'fourRankText', 'fiveRankText']
+        .map(property => String(info[property] || '').trim())
+        .filter(Boolean);
+      customDatasets.push({ key, name: easyScholarRankName(key), levels, matched: '' });
+    }
+  }
   if (Array.isArray(custom?.rank) && Array.isArray(custom?.rankInfo)) {
     for (const entry of custom.rank) {
       const [uuid, rankNumber] = String(entry).split('&&&');
       const info = custom.rankInfo.find((item: any) => item.uuid === uuid);
       const property = ({ 1: 'oneRankText', 2: 'twoRankText', 3: 'threeRankText', 4: 'fourRankText', 5: 'fiveRankText' } as Record<string, string>)[rankNumber];
-      if (info?.abbName && property && info[property]) ranks[info.abbName] = String(info[property]);
+      const key = String(info?.abbName || '').trim();
+      const matched = property ? String(info?.[property] || '').trim() : '';
+      if (key && matched) {
+        ranks[key] = matched;
+        const dataset = customDatasets.find(dataset => dataset.key === key);
+        if (dataset) dataset.matched = matched;
+      }
     }
+  }
+  for (const [key, value] of Object.entries(ranks)) {
+    if (isEasyScholarStandardKey(key)) continue;
+    let dataset = customDatasets.find(item => item.key.toLowerCase() === key.toLowerCase());
+    if (!dataset) {
+      dataset = { key, name: easyScholarRankName(key), levels: [], matched: '' };
+      customDatasets.push(dataset);
+    }
+    if (!dataset.matched) dataset.matched = String(value || '').trim();
   }
   const sci = rankValue(ranks, 'sci', 'SSCI');
   const cas = rankValue(ranks, 'sciUp', 'sciBase');
@@ -180,9 +212,26 @@ async function easyScholarLookup(fetcher: Fetcher, apiKey: string, publicationNa
   const ccfAlias = ({ T1: 'A', T2: 'B', T3: 'C' } as Record<string, string>)[ccfRaw.toUpperCase()] || ccfRaw.toUpperCase();
   return {
     ranks,
+    customDatasets,
     jcr: /^Q[1-4]$/i.test(sci) ? `JCR-Q${sci.slice(1)}` : '',
     cas: /^[1-4]区$/.test(cas) ? `CAS-${cas[0]}` : '',
     ccf: ['A', 'B', 'C'].includes(ccfAlias) ? ccfAlias : '',
+  };
+}
+
+function filterEasyScholarSelection(
+  result: Awaited<ReturnType<typeof easyScholarLookup>>,
+  datasetKeys: string[],
+  showAllDatasets: boolean,
+) {
+  if (showAllDatasets) return { ...result, datasetCatalog: result.customDatasets };
+  const selected = new Set(datasetKeys.map(key => key.toLowerCase()));
+  return {
+    ...result,
+    datasetCatalog: result.customDatasets,
+    ranks: Object.fromEntries(Object.entries(result.ranks).filter(([key]) =>
+      isEasyScholarStandardKey(key) || selected.has(key.toLowerCase()))),
+    customDatasets: result.customDatasets.filter(dataset => selected.has(dataset.key.toLowerCase())),
   };
 }
 
@@ -195,7 +244,8 @@ function score(candidate: PublicationLookup, requestedTitle: string): number {
 }
 
 export async function lookupPublication(item: any, fetcher: Fetcher = fetch,
-  easyScholarApiKey = ''): Promise<PublicationLookup> {
+  easyScholarApiKey = '', easyScholarDatasetKeys: string[] = [],
+  easyScholarShowAllDatasets = true): Promise<PublicationLookup> {
   const paper = resolvePaperItem(item);
   if (!paper) throw new Error('请选择论文条目或论文附件。');
   const title = field(paper, 'title');
@@ -235,16 +285,25 @@ export async function lookupPublication(item: any, fetcher: Fetcher = fetch,
   if (score(best, title) < 100) throw new Error('在线结果与论文标题不完全匹配，请先检查元数据或手动填写。');
   if (easyScholarApiKey && best.venue) {
     try {
-      let easy = await easyScholarLookup(fetcher, easyScholarApiKey.trim(), best.venue);
-      if (!Object.keys(easy.ranks).length) {
+      let easy = filterEasyScholarSelection(
+        await easyScholarLookup(fetcher, easyScholarApiKey.trim(), best.venue),
+        easyScholarDatasetKeys, easyScholarShowAllDatasets);
+      if (!Object.keys(easy.ranks).length || !easy.customDatasets.some(dataset => dataset.matched)) {
         const conference = lookupConferenceRank(best.venue);
         const fallbackName = conference?.acronym ||
           best.venue.replace(/\b(?:19|20)\d{2}\b/g, '').replace(/[,;]\s*$/, '').trim();
         if (fallbackName && fallbackName !== best.venue) {
-          easy = await easyScholarLookup(fetcher, easyScholarApiKey.trim(), fallbackName);
+          const fallback = filterEasyScholarSelection(
+            await easyScholarLookup(fetcher, easyScholarApiKey.trim(), fallbackName),
+            easyScholarDatasetKeys, easyScholarShowAllDatasets);
+          if (!Object.keys(easy.ranks).length || fallback.customDatasets.some(dataset => dataset.matched)) {
+            easy = fallback;
+          }
         }
       }
       best.ranks = easy.ranks;
+      best.customDatasets = easy.customDatasets;
+      best.datasetCatalog = easy.datasetCatalog;
       best.jcr = easy.jcr;
       best.cas = easy.cas;
       best.ccf = easy.ccf || best.ccf;
@@ -278,5 +337,6 @@ export async function applyPublicationLookup(item: any, result: PublicationLooku
     if (result.jcr || result.cas) await saveJournalRanks(paper, { jcr: result.jcr || '', cas: result.cas || '' });
     await saveConferenceRanks(paper, { ccf: '', core: '', conference: '' });
   }
+  if (result.ranks) await saveEasyScholarRanks(paper, result.ranks);
   await paper.saveTx();
 }

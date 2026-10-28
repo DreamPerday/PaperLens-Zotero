@@ -8,11 +8,13 @@ export interface Source { identity: string; version: string; title: string; item
 export interface AIConnection { baseURL: string; apiKey: string; model: string }
 export interface AIProvider extends AIConnection { id: string; name: string }
 export interface ProviderSummary { id: string; name: string; baseURL: string; model: string }
+export interface EasyScholarDatasetOption { key: string; name: string }
 export interface Settings {
   providers: AIProvider[]; activeProviderId: string;
   depth: Depth; hints: boolean; contextChars: number; autoTranslate: boolean;
   wordTranslationProviderId: string; offlineDictionary: boolean; translationKeepOpen: boolean;
-  easyScholarApiKey: string;
+  easyScholarApiKey: string; easyScholarShowAllDatasets: boolean;
+  easyScholarDatasetKeys: string[]; easyScholarDatasetCatalog: EasyScholarDatasetOption[];
 }
 export interface TranslationState {
   quote: Quote; content: string; model: string; status: 'idle' | Status;

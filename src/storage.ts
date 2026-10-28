@@ -1,4 +1,4 @@
-import { normalizeSettings } from './settings';
+import { mergeEasyScholarDatasetCatalog, normalizeSettings } from './settings';
 import type { Session, Settings, Source } from './types';
 
 const PREF = 'extensions.paperlens.settings';
@@ -81,6 +81,14 @@ export class Storage {
       })),
     };
     Zotero.Prefs.set(PREF, JSON.stringify(plain), true);
+  }
+
+  async rememberEasyScholarDatasets(datasets: Array<{ key: string; name?: string }>) {
+    if (!datasets.length) return;
+    const settings = await this.getSettings();
+    const catalog = mergeEasyScholarDatasetCatalog(settings.easyScholarDatasetCatalog, datasets);
+    if (JSON.stringify(catalog) === JSON.stringify(settings.easyScholarDatasetCatalog)) return;
+    await this.saveSettings({ ...settings, easyScholarDatasetCatalog: catalog });
   }
 
   private path(identity: string, suffix: string) { return PathUtils.join(this.directory, `${identity}.${suffix}.json`); }

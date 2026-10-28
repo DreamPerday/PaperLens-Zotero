@@ -2,11 +2,11 @@
 
 帮助读懂和核对论文的 AI 阅读助手。直接使用 Zotero 的 PDF 阅读器，在常驻侧栏里提问、精读、生成概览和核对论文依据。
 
-当前版本为 **0.3.5**，在选文自动翻译基础上新增多服务商、内置离线词典、单词本地路由、失败内容替换、期刊分区信息和在线出版信息查询；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前版本为 **0.3.8**，在选文自动翻译基础上新增多服务商、内置离线词典、单词本地路由、失败内容替换、期刊分区信息、在线出版信息查询和 EasyScholar 自定义数据集；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
 
 ## 安装与开始阅读
 
-1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.5.xpi`。从源码构建时，文件位于 `dist/`。
+1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.8.xpi`。从源码构建时，文件位于 `dist/`。
 2. 打开 Zotero → **工具 → 插件**，点击齿轮 → **从文件安装插件**，选择此 XPI。
 3. 打开一份本机 PDF，点击阅读器工具栏的 **PaperLens**，或右侧 PaperLens 图标。
 4. 在侧栏的 **设置** 中添加服务商，并填写各自的 **显示名称、Base URL、API Key、模型 ID**。可以保存多个服务商；从 Zotero 设置左侧的 **PaperLens** 也可以进入。
@@ -35,6 +35,14 @@
 条目侧栏新增 **出版信息** 小节，提供醒目的 **在线查询出版信息** 按钮；也可以在论文条目上右键选择 **PaperLens：在线查询出版信息**。插件会通过 DOI/标题匹配 OpenAlex、Crossref 和 arXiv，先显示论文类型、出版来源、年份和 CCF/CORE 等级，确认后写入条目。EfficientNet 会识别为 ICML 2019、CCF-A、CORE-A*。
 
 在设置中填写 EasyScholar 开放接口密钥后，插件还会调用 EasyScholar `getPublicationRank` 接口，读取 `sci`、`sciUp`、`sciBase`、`ccf` 和自定义数据集字段，自动填写 JCR、中科院分区和 CCF。密钥在 EasyScholar 官网登录后从 **开放接口** 页面获取，并保存在本机 Zotero 凭据库。
+
+用户账号启用的 EasyScholar 自定义数据集也会写入条目并在 **出版信息** 中显示彩色徽标；例如数据集中返回 `hzau` 时显示为 **华中农业大学**。插件不内置未经核验的华农分级表，因此需要在 EasyScholar 中启用对应数据集后才能查询到等级。
+
+EasyScholar 的 `rankInfo` 只描述数据集可用档位；实际论文等级必须由 `rank` 中的 UUID 配对确定。若 `rank` 为空，查询确认框会显示“华中农业大学：未匹配”及可选档位，但不会把 A+/A/B/C 中的某一项误写成论文等级。插件在未匹配到自定义数据集等级时会继续尝试去掉年份等后缀后的出版物名称。
+
+EasyScholar 设置中可以关闭“显示接口返回的全部数据集”，再勾选需要的数据集，或直接填写 `HZAU`、`UIBE` 等接口简称。过滤只影响自定义数据集；JCR、中科院分区和 CCF 始终保留。在线查询会自动记录接口返回的数据集清单，供后续勾选。
+
+选择保存后，下一次在线查询只写入并显示选中的数据集；已有条目需要重新执行一次在线查询来清理不需要的旧数据集标签。
 
 侧栏中切换任务、带入选文、改变解释深度或示例问题不会自动生成回答；开启选文自动翻译时，PDF 选文会单独调用翻译。解释深度可选“简明 / 标准 / 深入”；阅读提示可以在设置中关闭。
 
@@ -93,7 +101,7 @@ npm test
 npm run build
 ```
 
-构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.5.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
+构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.8.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
 
 | 文件 | 负责的能力 |
 | --- | --- |

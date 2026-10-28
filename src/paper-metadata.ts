@@ -1,8 +1,13 @@
 import conferenceData from './paper-ranks/ccf.json';
 
 const TAG_PREFIX = 'PaperLens/';
+const EASYSCHOLAR_TAG_PREFIX = `${TAG_PREFIX}EasyScholar:`;
 const CCF_VALUES = new Set(['A', 'B', 'C']);
 const CORE_VALUES = new Set(['A*', 'A', 'B', 'C']);
+const EASYSCHOLAR_STANDARD_KEYS = new Set(['sci', 'sciup', 'scibase', 'ccf', 'ssci']);
+const EASYSCHOLAR_DATASET_NAMES: Record<string, string> = {
+  hzau: '华中农业大学',
+};
 
 interface ConferenceRecord {
   acronym: string;
@@ -162,12 +167,20 @@ const TAG_COLORS: Record<string, string> = {
   'CORE-A*': '#B03366', 'CORE-A': '#7A3E9D', 'CORE-B': '#2F6FA3', 'CORE-C': '#3A8055',
 };
 
+const CUSTOM_TAG_COLORS = ['#3E6FA8', '#2E7D5B', '#8A5A9C', '#B15D2A', '#A03F5B', '#8A751D'];
+
 export function tagColor(value: string): string {
   return TAG_COLORS[value] || '#6B7280';
 }
 
+export function customTagColor(key: string): string {
+  let hash = 0;
+  for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return CUSTOM_TAG_COLORS[hash % CUSTOM_TAG_COLORS.length];
+}
+
 async function colorTag(paper: any, name: string, value: string): Promise<void> {
-  const color = TAG_COLORS[value];
+  const color = value.startsWith('CUSTOM:') ? customTagColor(value.slice(7)) : TAG_COLORS[value];
   if (!color || !Zotero.Tags?.setColor) return;
   try {
     const libraryID = paper.libraryID;
@@ -208,6 +221,80 @@ export async function saveConferenceRanks(item: any,
   await paper.saveTx();
   if (CCF_VALUES.has(ccf)) await colorTag(paper, `${TAG_PREFIX}CCF-${ccf}`, `CCF-${ccf}`);
   if (CORE_VALUES.has(core)) await colorTag(paper, `${TAG_PREFIX}CORE-${core}`, `CORE-${core}`);
+}
+
+export interface EasyScholarRank {
+  key: string;
+  name: string;
+  value: string;
+}
+
+export interface EasyScholarDataset {
+  key: string;
+  name: string;
+  levels: string[];
+  matched: string;
+}
+
+export function easyScholarRankName(key: string): string {
+  return EASYSCHOLAR_DATASET_NAMES[key.toLowerCase()] || key;
+}
+
+export function isEasyScholarStandardKey(key: string): boolean {
+  return EASYSCHOLAR_STANDARD_KEYS.has(key.toLowerCase());
+}
+
+export function getEasyScholarRanks(item: any): EasyScholarRank[] {
+  const paper = resolvePaperItem(item);
+  if (!paper) return [];
+  return paper.getTags()
+    .map((entry: any) => String(entry.tag || ''))
+    .filter((tag: string) => tag.startsWith(EASYSCHOLAR_TAG_PREFIX))
+    .map((tag: string) => {
+      const value = tag.slice(EASYSCHOLAR_TAG_PREFIX.length);
+      const index = value.indexOf('=');
+      const key = index > 0 ? value.slice(0, index) : '';
+      return key ? { key, name: easyScholarRankName(key), value: value.slice(index + 1) } : null;
+    })
+    .filter((value: EasyScholarRank | null): value is EasyScholarRank => Boolean(value));
+}
+
+export function easyScholarRanksLabel(item: any): string {
+  return getEasyScholarRanks(item).map(rank => `${rank.name}: ${rank.value}`).join(' · ');
+}
+
+export function easyScholarRanksSummary(ranks: Record<string, string> | undefined): string {
+  return Object.entries(ranks || {})
+    .filter(([key, value]) => !isEasyScholarStandardKey(key) && String(value || '').trim())
+    .map(([key, value]) => `${easyScholarRankName(key)}: ${String(value).trim()}`)
+    .join(' · ');
+}
+
+export function unmatchedEasyScholarDatasetsSummary(datasets: EasyScholarDataset[] | undefined): string {
+  return (datasets || [])
+    .filter(dataset => !dataset.matched)
+    .map(dataset => {
+      const levels = dataset.levels.length ? `（可选 ${dataset.levels.join(' / ')}）` : '';
+      return `${dataset.name}：未匹配${levels}`;
+    })
+    .join(' · ');
+}
+
+export async function saveEasyScholarRanks(item: any, ranks: Record<string, string>): Promise<void> {
+  const paper = resolvePaperItem(item);
+  if (!paper) return;
+  const tags = paper.getTags().filter((entry: any) => !String(entry.tag || '').startsWith(EASYSCHOLAR_TAG_PREFIX));
+  const added: Array<{ tag: string; value: string }> = [];
+  for (const [key, raw] of Object.entries(ranks)) {
+    const value = String(raw || '').trim();
+    if (!value || isEasyScholarStandardKey(key)) continue;
+    const tag = `${EASYSCHOLAR_TAG_PREFIX}${key}=${value}`;
+    tags.push({ tag, type: 1 });
+    added.push({ tag, value: key });
+  }
+  paper.setTags(tags);
+  await paper.saveTx();
+  for (const { tag, value } of added) await colorTag(paper, tag, `CUSTOM:${value}`);
 }
 
 export function tagsWithQuartile(tags: Array<{ tag: string; type?: number }>, value: string): Array<{ tag: string; type?: number }> {

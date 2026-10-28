@@ -1,9 +1,11 @@
 import { AIClient } from './ai/client';
 import { ReaderController } from './controller';
 import {
-  conferenceRankLabel, getConferenceRanks, getJournal, getJournalRanks, getQuartile, journalRanksLabel, parseConferenceRank,
-  parseJournalRanksInput, publicationField, quartileLabel, resolvePaperItem, saveConferenceRanks, saveJournal,
-  saveJournalRanks, saveQuartile, tagColor,
+  conferenceRankLabel, customTagColor, easyScholarRanksLabel, easyScholarRanksSummary, getConferenceRanks,
+  getEasyScholarRanks, getJournal, getJournalRanks, getQuartile, journalRanksLabel, parseConferenceRank,
+  parseJournalRanksInput, publicationField, quartileLabel, resolvePaperItem, saveConferenceRanks,
+  saveEasyScholarRanks, saveJournal, saveJournalRanks, saveQuartile, tagColor,
+  unmatchedEasyScholarDatasetsSummary,
 } from './paper-metadata';
 import { applyPublicationLookup, lookupPublication } from './paper-online';
 import { Storage } from './storage';
@@ -25,6 +27,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   let journalRowID: string;
   let quartileRowID: string;
   let conferenceRowID: string;
+  let easyScholarRowID: string;
   let publicationPaneID: string;
   const notify = () => {
     for (const { controller } of views.values()) {
@@ -39,13 +42,13 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     if (!paper) { body.replaceChildren(); return; }
     const doc = body.ownerDocument;
     (doc as any).l10n?.addResourceIds(['paperlens.ftl']);
-    let labels = ['在线查询出版信息', '期刊 / 出版物', 'JCR / 中科院分区', '会议等级（CCF / CORE）', '未设置', '查询中…', '保存失败'];
+    let labels = ['在线查询出版信息', '期刊 / 出版物', 'JCR / 中科院分区', '会议等级（CCF / CORE）', '未设置', '查询中…', '保存失败', 'EasyScholar 数据集'];
     try {
       labels = await (doc as any).l10n.formatValues([
         { id: 'paperlens-publication-query' }, { id: 'paperlens-journal-label' },
         { id: 'paperlens-quartile-label' }, { id: 'paperlens-conference-rank-label' },
         { id: 'paperlens-quartile-none' }, { id: 'paperlens-publication-querying' },
-        { id: 'paperlens-metadata-error' },
+        { id: 'paperlens-metadata-error' }, { id: 'paperlens-easyscholar-ranks-label' },
       ]);
     } catch { /* Use fallback labels. */ }
     if (!body.isConnected) return;
@@ -55,6 +58,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       const venue = getJournal(paper) || labels[4];
       const quartiles = getJournalRanks(paper);
       const ranks = getConferenceRanks(paper);
+      const customRanks = getEasyScholarRanks(paper);
       const section = (title: string, content: Node | string) => {
         const row = doc.createElementNS(HTML, 'div') as HTMLDivElement;
         row.style.cssText = 'display:grid;gap:5px;';
@@ -68,19 +72,23 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
         row.append(heading, value);
         return row;
       };
-      const badge = (text: string, value: string) => {
+      const badge = (text: string, color: string) => {
         const node = doc.createElementNS(HTML, 'span') as HTMLSpanElement;
         node.textContent = text;
         node.style.cssText = `display:inline-block;margin:0 6px 4px 0;padding:2px 8px;border-radius:999px;` +
-          `background:${tagColor(value)};color:#fff;font-size:11px;font-weight:600;`;
+          `background:${color};color:#fff;font-size:11px;font-weight:600;`;
         return node;
       };
       const rankWrap = doc.createElementNS(HTML, 'div') as HTMLDivElement;
-      if (quartiles.jcr) rankWrap.append(badge(quartileLabel(quartiles.jcr), quartiles.jcr));
-      if (quartiles.cas) rankWrap.append(badge(quartileLabel(quartiles.cas), quartiles.cas));
-      if (ranks.ccf) rankWrap.append(badge(`CCF-${ranks.ccf}`, `CCF-${ranks.ccf}`));
-      if (ranks.core) rankWrap.append(badge(`CORE-${ranks.core}`, `CORE-${ranks.core}`));
+      if (quartiles.jcr) rankWrap.append(badge(quartileLabel(quartiles.jcr), tagColor(quartiles.jcr)));
+      if (quartiles.cas) rankWrap.append(badge(quartileLabel(quartiles.cas), tagColor(quartiles.cas)));
+      if (ranks.ccf) rankWrap.append(badge(`CCF-${ranks.ccf}`, tagColor(`CCF-${ranks.ccf}`)));
+      if (ranks.core) rankWrap.append(badge(`CORE-${ranks.core}`, tagColor(`CORE-${ranks.core}`)));
       if (!rankWrap.childNodes.length) rankWrap.textContent = labels[4];
+      const customRankWrap = doc.createElementNS(HTML, 'div') as HTMLDivElement;
+      for (const rank of customRanks) {
+        customRankWrap.append(badge(`${rank.name}: ${rank.value}`, customTagColor(rank.key)));
+      }
       const query = doc.createElementNS(HTML, 'button') as HTMLButtonElement;
       query.textContent = labels[0];
       query.style.cssText = 'justify-self:start;';
@@ -101,6 +109,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       container.replaceChildren(
         section(labels[1], venue),
         section(`${labels[2]} · ${labels[3]}`, rankWrap),
+        ...(customRanks.length ? [section(labels[7], customRankWrap)] : []),
         query,
         status,
       );
@@ -113,19 +122,27 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     const paper = resolvePaperItem(item);
     if (!paper) return false;
     const settings = await storage.getSettings();
-    const result = await lookupPublication(paper, fetch, settings.easyScholarApiKey);
+    const result = await lookupPublication(
+      paper, fetch, settings.easyScholarApiKey,
+      settings.easyScholarDatasetKeys, settings.easyScholarShowAllDatasets);
+    await storage.rememberEasyScholarDatasets(result.datasetCatalog || [])
+      .catch(error => Zotero.logError(error));
     const ranks = [
       result.jcr ? quartileLabel(result.jcr) : '',
       result.cas ? quartileLabel(result.cas) : '',
       result.ccf ? `CCF-${result.ccf}` : '',
       result.core ? `CORE-${result.core}` : '',
     ].filter(Boolean).join(' · ');
+    const customRanks = easyScholarRanksSummary(result.ranks);
+    const unmatchedDatasets = unmatchedEasyScholarDatasetsSummary(result.customDatasets);
     const summary = [
       `匹配论文：${result.title}`,
       `类型：${result.type === 'conference' ? '会议论文' : result.type === 'journal' ? '期刊论文' : result.type === 'preprint' ? '预印本' : '其他'}`,
       `出版来源：${result.venue || '未知'}`,
       `年份：${result.year || '未知'}`,
       `等级：${ranks || '无公开等级数据'}`,
+      ...(customRanks ? [`其他数据集：${customRanks}`] : []),
+      ...(unmatchedDatasets ? [`未匹配数据集：${unmatchedDatasets}`] : []),
       `等级数据源：${result.rankSource || 'CCFDDL / 本地索引'}`,
       ...(result.rankError ? [`EasyScholar 查询失败：${result.rankError}`] : []),
       `数据源：${result.source}`,
@@ -138,6 +155,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     Zotero.ItemPaneManager.refreshInfoRow(journalRowID);
     Zotero.ItemPaneManager.refreshInfoRow(quartileRowID);
     Zotero.ItemPaneManager.refreshInfoRow(conferenceRowID);
+    Zotero.ItemPaneManager.refreshInfoRow(easyScholarRowID);
     return true;
   }
 
@@ -263,7 +281,8 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   const plugin = {
     info, storage, ai, views,
     paperMetadata: {
-      getJournal, getQuartile, getConferenceRanks, saveJournal, saveQuartile, saveConferenceRanks, resolvePaperItem,
+      getJournal, getQuartile, getConferenceRanks, getEasyScholarRanks, easyScholarRanksLabel,
+      saveJournal, saveQuartile, saveConferenceRanks, saveEasyScholarRanks, resolvePaperItem,
     },
     paperOnline: { lookupPublication, applyPublicationLookup },
     async start() {
@@ -320,6 +339,15 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
           setEnabled(allowed); setEditable(allowed);
         },
       });
+      easyScholarRowID = Zotero.ItemPaneManager.registerInfoRow({
+        rowID: 'paperlens-easyscholar-ranks', pluginID: info.id,
+        label: { l10nID: 'paperlens-easyscholar-ranks-label' },
+        position: 'end', multiline: false, nowrap: true, editable: false,
+        onGetData: ({ item }: any) => easyScholarRanksLabel(item),
+        onItemChange: ({ item, setEnabled }: any) => {
+          setEnabled(Boolean(resolvePaperItem(item)));
+        },
+      });
       publicationPaneID = Zotero.ItemPaneManager.registerSection({
         paneID: 'paperlens-publication', pluginID: info.id,
         header: { l10nID: 'paperlens-publication-header', icon: 'chrome://paperlens/content/icon.svg' },
@@ -328,7 +356,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
         onRender: ({ body, item }: any) => { void mountPublicationSection(body, item); },
         onDestroy: ({ body }: any) => { body.replaceChildren(); },
       });
-      if (!journalRowID || !quartileRowID || !conferenceRowID || !publicationPaneID) {
+      if (!journalRowID || !quartileRowID || !conferenceRowID || !easyScholarRowID || !publicationPaneID) {
         throw new Error('PaperLens 出版信息行注册失败。');
       }
       await Zotero.PreferencePanes.register({ pluginID: info.id, id: 'paperlens-settings', label: 'PaperLens',
@@ -420,6 +448,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       if (journalRowID) Zotero.ItemPaneManager.unregisterInfoRow(journalRowID);
       if (quartileRowID) Zotero.ItemPaneManager.unregisterInfoRow(quartileRowID);
       if (conferenceRowID) Zotero.ItemPaneManager.unregisterInfoRow(conferenceRowID);
+      if (easyScholarRowID) Zotero.ItemPaneManager.unregisterInfoRow(easyScholarRowID);
       if (publicationPaneID) Zotero.ItemPaneManager.unregisterSection(publicationPaneID);
       Zotero.PreferencePanes.unregister('paperlens-settings');
       await storage.flush();

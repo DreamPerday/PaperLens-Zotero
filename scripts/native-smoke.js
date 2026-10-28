@@ -45,6 +45,15 @@ await c.bridge.saveSettings({ ...savedSettings, easyScholarApiKey: 'paperlens-ea
 const easyScholarSettings = await c.bridge.getSettings();
 assert(easyScholarSettings.easyScholarApiKey === 'paperlens-easyscholar-test', 'EasyScholar key was not persisted');
 assert(!Zotero.Prefs.get('extensions.paperlens.settings', true).includes('paperlens-easyscholar-test'), 'EasyScholar key entered plain preferences');
+await c.bridge.saveSettings({ ...easyScholarSettings, easyScholarShowAllDatasets: false,
+  easyScholarDatasetKeys: ['HZAU'], easyScholarDatasetCatalog: [{ key: 'HZAU', name: '华中农业大学' }] });
+await plugin.storage.rememberEasyScholarDatasets([{ key: 'UIBE', name: 'UIBE' }]);
+const datasetSettings = await c.bridge.getSettings();
+assert(datasetSettings.easyScholarShowAllDatasets === false, 'EasyScholar dataset filter was not persisted');
+assert(JSON.stringify(datasetSettings.easyScholarDatasetKeys) === JSON.stringify(['HZAU']),
+  'EasyScholar dataset selection was not persisted');
+assert(datasetSettings.easyScholarDatasetCatalog.some(dataset => dataset.key === 'UIBE'),
+  'EasyScholar dataset catalog was not merged');
 await c.bridge.saveSettings(savedSettings);
 const primaryProviderID = savedSettings.activeProviderId;
 const backupProviderID = 'smoke-backup';
@@ -107,6 +116,6 @@ await setActiveModel(settings.model);
 await c.bridge.retry(c.session.messages.at(-1).id);
 assert(c.session.messages.length === count && c.session.messages.at(-1).status === 'complete', 'Retry failed');
 const result = { version: Zotero.version, pages: c.source.pageCount, blocks: c.source.blocks.length, noteID: answer.noteID,
-  passed: ['sidebar', 'models', 'connection', 'credential storage', 'EasyScholar key storage', 'multiple providers', 'per-provider credentials', 'provider switching', 'translation preference migration', 'selection popup', 'streaming chat', 'source navigation', 'return position', 'native note', 'close reading', 'overview', 'verify', 'stop', 'duplicate prevention', 'retry'] };
+  passed: ['sidebar', 'models', 'connection', 'credential storage', 'EasyScholar key storage', 'EasyScholar dataset selection', 'multiple providers', 'per-provider credentials', 'provider switching', 'translation preference migration', 'selection popup', 'streaming chat', 'source navigation', 'return position', 'native note', 'close reading', 'overview', 'verify', 'stop', 'duplicate prevention', 'retry'] };
 await IOUtils.writeJSON(PathUtils.join(directory, 'native-smoke-result.json'), result);
 return result;

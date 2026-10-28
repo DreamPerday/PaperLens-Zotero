@@ -5,6 +5,7 @@ paperlens-pane-sidenav =
 paperlens-journal-label = Journal / publication
 paperlens-quartile-label = JCR / CAS quartile
 paperlens-conference-rank-label = Conference rank (CCF / CORE)
+paperlens-easyscholar-ranks-label = EasyScholar datasets
 paperlens-publication-header =
     .label = Publication information
 paperlens-publication-sidenav =

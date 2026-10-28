@@ -1,3 +1,37 @@
+# 0.3.8 验收记录
+
+日期：2026-10-28。环境：Windows，Zotero 10.0.6。新增 EasyScholar 数据集选择与查询结果过滤。
+
+- 设置新增“显示接口返回的全部数据集”开关；关闭后可勾选在线查询发现的数据集，或手动填写 HZAU、UIBE 等接口简称。
+- 过滤同时作用于确认摘要、EasyScholar 数据集信息行、出版信息徽标和条目标签；标准 JCR、中科院分区和 CCF 不受影响。
+- 在线查询会保存数据集名称清单，供设置页后续勾选；留空且关闭“全部”时不保留自定义数据集。
+- `npm run check`、56 项单元测试和构建通过。
+- `scripts/native-smoke.js` 的 21 项检查通过，包括数据集开关、选择列表和名称清单的持久化及合并。
+- `scripts/dataset-settings-smoke.js` 的 4 项界面检查通过：设置区渲染、全部数据集开关、HZAU/UIBE 选项和当前 HZAU 选择。
+- `scripts/metadata-smoke.js` 的 9 项检查通过，原有出版信息行与自定义数据集读写未受影响。
+
+# 0.3.7 验收记录
+
+日期：2026-10-28。环境：Windows，Zotero 10.0.6。修正 EasyScholar 自定义数据集空结果处理和名称回退。
+
+- 精确复现 `customRank.rankInfo` 有 HZAU 档位、`customRank.rank` 为空的接口响应；插件不会把档位定义误当作论文等级。
+- 查询确认框会显示未匹配的“华中农业大学”数据集和可选档位；只有 `uuid&&&档位序号` 配对存在时才保存 HZAU 等级标签。
+- 首次查询仅返回数据集定义而没有实际自定义等级时，插件会用去掉年份等后缀的名称重试；回退成功时采用新的实际等级。
+- `npm run check`、54 项单元测试和 `npm run build` 通过。
+- `scripts/metadata-smoke.js` 的 9 项检查通过：自定义等级写入、名称显示、Zotero 原生颜色、出版信息徽标和原有信息行编辑均正常。
+- `scripts/native-smoke.js` 的 20 项原生流程检查通过。
+
+# 0.3.6 验收记录
+
+日期：2026-10-28。环境：Windows，Zotero 10.0.6。新增 EasyScholar 自定义数据集展示，支持华中农业大学期刊分级目录等用户账号数据集。
+
+- `npm run check`、52 项单元测试和 `npm run build` 通过，生成 `dist/paperlens-zotero-0.3.6.xpi`。
+- EasyScholar `customRank` 解析和自定义数据集标签写入由单元测试覆盖；标准 JCR/CAS/CCF 字段不会重复写成自定义标签。
+- 自定义数据集在“出版信息”中显示为彩色徽标，并新增只读的“EasyScholar 数据集”信息行；`hzau` 显示名为“华中农业大学”。
+- `scripts/metadata-smoke.js` 的 9 项实机检查通过，确认自定义数据集名称、Zotero 原生标签颜色、信息行渲染和出版信息徽标；原有期刊、分区和会议行的编辑流程未受影响。
+- `scripts/native-smoke.js` 的 20 项原生流程检查通过，包括 EasyScholar 密钥凭据存储、多服务商切换、翻译和历史问答。
+- 插件不内置华农分级数据。真实查询需要在 EasyScholar 账号中启用对应数据集；本次没有用户可用的真实密钥，因此未执行真实账号接口验收。
+
 # 0.3.5 验收记录
 
 日期：2026-10-28。环境：Windows，Zotero 10.0.6。修正在线查询入口可见性，并改用 Zotero 原生标签颜色。

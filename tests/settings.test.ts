@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { activeProvider, DEFAULT_SETTINGS, normalizeSettings } from '../src/settings';
+import {
+  activeProvider, DEFAULT_SETTINGS, mergeEasyScholarDatasetCatalog, normalizeSettings,
+} from '../src/settings';
 
 test('legacy single-provider settings migrate without losing translation or reading preferences', () => {
   const settings = normalizeSettings({
@@ -55,5 +57,30 @@ test('empty settings use an editable default provider', () => {
   assert.equal(settings.offlineDictionary, true);
   assert.equal(settings.translationKeepOpen, true);
   assert.equal(settings.easyScholarApiKey, '');
+  assert.equal(settings.easyScholarShowAllDatasets, true);
+  assert.deepEqual(settings.easyScholarDatasetKeys, []);
+  assert.deepEqual(settings.easyScholarDatasetCatalog, []);
   assert.equal(settings.wordTranslationProviderId, '');
+});
+
+test('EasyScholar dataset selection is sanitized and the discovered catalog is merged', () => {
+  const settings = normalizeSettings({
+    easyScholarShowAllDatasets: false,
+    easyScholarDatasetKeys: ['HZAU', ' hzau ', 'UIBE', '=bad'],
+    easyScholarDatasetCatalog: [
+      { key: 'HZAU', name: '华中农业大学' },
+      { key: 'hzau', name: '重复项' },
+    ],
+  });
+
+  assert.equal(settings.easyScholarShowAllDatasets, false);
+  assert.deepEqual(settings.easyScholarDatasetKeys, ['HZAU', 'UIBE', 'bad']);
+  assert.deepEqual(settings.easyScholarDatasetCatalog, [{ key: 'HZAU', name: '华中农业大学' }]);
+  assert.deepEqual(mergeEasyScholarDatasetCatalog(settings.easyScholarDatasetCatalog, [
+    { key: 'UIBE', name: '对外经济贸易大学' },
+    { key: 'HZAU', name: '华中农业大学' },
+  ]), [
+    { key: 'HZAU', name: '华中农业大学' },
+    { key: 'UIBE', name: '对外经济贸易大学' },
+  ]);
 });

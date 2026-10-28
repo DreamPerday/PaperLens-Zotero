@@ -146,6 +146,26 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
         <button aria-label={showKey ? '隐藏密钥' : '显示密钥'} onClick={() => setShowKey(!showKey)}>{showKey ? '隐藏' : '显示'}</button>
       </div></label>
       <p className="field-help">在 EasyScholar 官网登录后，从“开放接口”页面获取密钥。密钥存入本机 Zotero 凭据库；没有密钥时在线查询仍可识别出版物，但不会自动填写 EasyScholar 分区。</p>
+      <fieldset className="dataset-settings">
+        <legend>EasyScholar 数据集显示</legend>
+        <label className="check"><input type="checkbox" checked={settings.easyScholarShowAllDatasets !== false}
+          onChange={e => update('easyScholarShowAllDatasets', e.target.checked)}/>显示接口返回的全部数据集</label>
+        {settings.easyScholarShowAllDatasets === false && <>
+          {settings.easyScholarDatasetCatalog.length > 0
+            ? <div className="dataset-grid">{settings.easyScholarDatasetCatalog.map(dataset => <label className="check dataset-choice" key={dataset.key}>
+                <input type="checkbox" checked={settings.easyScholarDatasetKeys.some(key => key.toLowerCase() === dataset.key.toLowerCase())}
+                  onChange={e => update('easyScholarDatasetKeys', e.target.checked
+                    ? [...settings.easyScholarDatasetKeys.filter(key => key.toLowerCase() !== dataset.key.toLowerCase()), dataset.key]
+                    : settings.easyScholarDatasetKeys.filter(key => key.toLowerCase() !== dataset.key.toLowerCase()))}/>
+                {dataset.name || dataset.key}
+              </label>)}</div>
+            : <p className="field-help">还没有发现可用数据集。先在线查询一次论文，或直接在下方填写接口返回的简称。</p>}
+          <label>需要显示的数据集简称<input value={settings.easyScholarDatasetKeys.join(', ')}
+            placeholder="例如：HZAU, UIBE, SWJTU"
+            onChange={e => update('easyScholarDatasetKeys', e.target.value.split(/[,，\s]+/).map(value => value.trim()).filter(Boolean))}/></label>
+          <p className="field-help">只保留这里列出的数据集；标准 JCR、中科院分区和 CCF 不受影响。留空则不显示任何自定义数据集。</p>
+        </>}
+      </fieldset>
       <details><summary>高级设置</summary><label>单次原文上下文预算（字符）<input type="number" min="4000" max="160000" step="4000" value={settings.contextChars} onChange={e => update('contextChars', Number(e.target.value))}/></label><p className="field-help">长文概览会分段处理全文。预算应与模型实际上下文容量匹配。</p></details>
       <p className="privacy">AI 服务商和 EasyScholar 的密钥分别保存在本机凭据存储。句子翻译、提问和分析使用当前服务商；单个英文单词可按上方设置发送给专用本地服务。</p>
       <div className="actions"><button className="primary" disabled={Boolean(busy) || !activeProvider?.baseURL.trim() || !activeProvider?.model.trim()} onClick={() => act('save', async () => {

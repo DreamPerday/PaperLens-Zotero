@@ -150,6 +150,10 @@ footer { border-top: 1px solid var(--border); font-size: 10px; color: var(--mute
 .settings .input-row button { white-space: nowrap; font-size: 12px; }
 .settings .field-help { font-size: 11px; line-height: 1.7; margin: 5px 0; }
 .settings .check { font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.settings .dataset-settings { margin-top: 18px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.settings .dataset-settings legend { padding: 0 5px; font-size: 13px; font-weight: 600; }
+.settings .dataset-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.settings .dataset-choice { min-width: 0; }
 .settings details { margin-top: 18px; }
 .settings summary { cursor: pointer; font-size: 12px; }
 .settings .privacy { padding-top: 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); margin-top: 22px; }

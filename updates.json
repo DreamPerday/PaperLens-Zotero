@@ -3,8 +3,8 @@
     "paperlens@dreamperday.github.io": {
       "updates": [
         {
-          "version": "0.3.5",
-          "update_link": "https://github.com/DreamPerday/PaperLens-Zotero/releases/download/v0.3.5/paperlens-zotero-0.3.5.xpi",
+          "version": "0.3.8",
+          "update_link": "https://github.com/DreamPerday/PaperLens-Zotero/releases/download/v0.3.8/paperlens-zotero-0.3.8.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "10.0.6",

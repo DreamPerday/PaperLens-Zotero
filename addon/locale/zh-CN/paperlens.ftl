@@ -5,6 +5,7 @@ paperlens-pane-sidenav =
 paperlens-journal-label = 期刊 / 出版物
 paperlens-quartile-label = JCR / 中科院分区
 paperlens-conference-rank-label = 会议等级（CCF / CORE）
+paperlens-easyscholar-ranks-label = EasyScholar 数据集
 paperlens-publication-header =
     .label = 出版信息
 paperlens-publication-sidenav =
