@@ -26,13 +26,13 @@ export function TranslationPopup({ bridge }: { bridge: TranslationBridge }) {
       bridge.move(event.screenX - last.x, event.screenY - last.y);
       drag.current = { x: event.screenX, y: event.screenY };
     }} onPointerUp={() => { drag.current = undefined; }} onLostPointerCapture={() => { drag.current = undefined; }}>
-      <div><strong>选文翻译</strong><span>简体中文 · 第 {state?.quote.pageLabel || '…'} 页</span></div>
+      <div><strong>{state?.scope === 'word' ? '单词翻译' : '选文翻译'}</strong><span>简体中文 · 第 {state?.quote.pageLabel || '…'} 页</span></div>
       <button className="translation-close" aria-label="关闭译文浮窗" title="关闭（Esc）" onClick={() => bridge.close()}>×</button>
     </div>
     <div className="translation-body">
       {!state ? <p className="muted" role="status">正在准备翻译…</p> : <>
         <details className="translation-original"><summary>查看原文</summary><p>{state.quote.text}</p></details>
-        {!state.configured ? <div className="translation-setup"><p>连接 AI 模型后，即可翻译选中的原文。</p><button onClick={() => bridge.openSettings()}>配置 AI 服务</button></div> : <>
+        {!state.configured ? <div className="translation-setup"><p>{state.scope === 'word' ? '连接单词翻译模型后，即可翻译选中的词语。' : '连接 AI 模型后，即可翻译选中的原文。'}</p><button onClick={() => bridge.openSettings()}>配置 AI 服务</button></div> : <>
           <div className="answer translation-answer"><Markdown>{state.content}</Markdown></div>
           {busy && <p className="translation-progress muted" role="status">{state.content ? '正在翻译…' : '正在翻译选文…'}</p>}
           {state.status === 'stopped' && <p className="translation-progress muted" role="status">翻译已停止{state.content ? '，已保留收到的译文。' : '。'}</p>}
@@ -48,6 +48,8 @@ export function TranslationPopup({ bridge }: { bridge: TranslationBridge }) {
     </div>
     <div className="translation-footer"><label><input type="checkbox" checked={state?.autoTranslate ?? true} disabled={!state}
       onChange={event => void action(() => bridge.setAutoTranslate(event.target.checked))}/>选中后自动翻译</label>
-      <span title={state?.model}>{state?.model || '沿用当前 AI 模型'}</span></div>
+      <span title={state ? `${state.provider} · ${state.model}` : undefined}>
+        {state?.source === 'dictionary' ? '内置离线词典 · ECDICT' : state?.model || '沿用当前 AI 模型'}
+      </span></div>
   </section>;
 }

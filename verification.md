@@ -1,3 +1,23 @@
+# 0.3.3 验收记录
+
+日期：2026-10-28。环境：Windows，Zotero 10.0.6。在 0.3.2 基础上增加条目信息区的期刊与分区编辑。
+
+- `npm run check`、47 项单元测试和 `npm run build` 通过，生成 `dist/paperlens-zotero-0.3.3.xpi`。
+- `scripts/metadata-smoke.js` 的 5 项实机检查通过：期刊写入标准字段，JCR/中科院分区写入标签，两行信息正确显示，并可从 Zotero 信息区修改保存。
+- 原有 `native-smoke.js` 的 19 项和 `translation-smoke.js` 的 21 项检查继续通过，包括浮窗常驻开关开启和关闭两种行为。
+- 期刊字段使用 Zotero 原生 `publicationTitle`、`proceedingsTitle`、`bookTitle`、`repository` 或 `websiteTitle`，不创建私有期刊字段；分区使用 `PaperLens/JCR-Q*`、`PaperLens/CAS-*` 标签。
+
+# 0.3.2 验收记录
+
+日期：2026-10-28。环境：Windows，Zotero 10.0.6。以 0.3.1 为基线增加单词本地路由，保留原 0.3.0 翻译浮窗和多服务商能力。
+
+- `npm run check`、44 项单元测试和 `npm run build` 通过，生成约 2.6 MB 的 `dist/paperlens-zotero-0.3.2.xpi`。
+- `scripts/native-smoke.js` 的 19 项原生流程检查通过。
+- `scripts/translation-smoke.js` 的 19 项检查通过：常见单词由内置离线词典直接返回且不产生 AI 请求；关闭离线词典后，单个英文单词只发往指定本地服务商；长句仍使用当前远程服务商；点击浮窗外和滚动 PDF 均不会自动关闭；自动浮窗、流式、停止重试、侧栏追问和原有布局继续通过。
+- 内置词典由 MIT 许可的 ECDICT 生成，共 57,895 个常见、考试和较高频词条；单词识别和词形还原覆盖带标点、连字符、复数、过去式、进行时、短语、中文和单字符边界。
+- 词典未命中时才使用简短模型提示词，不携带整篇论文上下文。
+- 未安装本地模型时仍可让单词跟随当前服务商。选择专用本地服务商后，如果配置不完整，不会静默回退到远程模型，避免产生意外 Token。
+
 # 0.3.1 验收记录
 
 日期：2026-10-28。环境：Windows，Zotero 10.0.6。以已发布的 0.3.0 为基线合并多服务商能力，保留选文自动翻译。测试使用独立 profile、合成论文和本机模拟 AI 服务，不访问个人论文库或真实密钥。

@@ -22,7 +22,9 @@ export class TranslationPopups {
         const settings = await this.storage.getSettings();
         if (this.pending.get(reader)?.anchor !== anchor) return;
         this.pending.delete(reader);
-        if (anchor.isConnected && settings.autoTranslate !== false) this.open(reader, anchor, quote);
+        if (anchor.isConnected && settings.autoTranslate !== false) {
+          this.open(reader, anchor, quote, settings.translationKeepOpen !== false);
+        }
       } catch (error) { Zotero.logError(error); }
     }, 450);
     this.pending.set(reader, { anchor, timer });
@@ -36,7 +38,12 @@ export class TranslationPopups {
     clearTimeout(this.pending.get(reader)?.timer); this.pending.delete(reader);
   }
 
-  open(reader: any, anchor: HTMLElement, quote: Quote) {
+  async openFromPreferences(reader: any, anchor: HTMLElement, quote: Quote) {
+    const settings = await this.storage.getSettings();
+    this.open(reader, anchor, quote, settings.translationKeepOpen !== false);
+  }
+
+  open(reader: any, anchor: HTMLElement, quote: Quote, keepOpen = true) {
     this.cancelPending(reader);
     const current = this.entries.get(reader);
     if (current && this.sameQuote(current.quote, quote)) { current.show(); return; }
@@ -85,7 +92,8 @@ export class TranslationPopups {
     };
     const outside = (event: Event) => {
       const target = event.target as Node;
-      if (target.ownerDocument !== frame.contentDocument && !panel.contains(target) && !(target as Element).closest?.('.selection-popup')) close();
+      if (target.ownerDocument !== frame.contentDocument && !panel.contains(target) &&
+        !(target as Element).closest?.('.selection-popup')) close();
     };
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
     const scrolled = (event: Event) => {
@@ -117,9 +125,9 @@ export class TranslationPopups {
     (doc.body || doc.documentElement).append(panel); place();
     if (closed) return;
     for (const viewDoc of viewDocs) {
-      viewDoc.addEventListener('pointerdown', outside, true);
+      if (!keepOpen) viewDoc.addEventListener('pointerdown', outside, true);
       viewDoc.addEventListener('keydown', escape, true);
-      viewDoc.addEventListener('scroll', scrolled, true);
+      if (!keepOpen) viewDoc.addEventListener('scroll', scrolled, true);
       viewDoc.defaultView?.addEventListener('unload', close, { once: true });
     }
     win.addEventListener('resize', place); win.addEventListener('unload', close, { once: true });

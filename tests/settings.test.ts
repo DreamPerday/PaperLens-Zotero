@@ -23,11 +23,13 @@ test('multiple providers retain independent endpoints, models and active selecti
       { id: 'local', name: '本地模型', baseURL: 'http://localhost:11434/v1', model: 'model-b', apiKey: '' },
     ],
     activeProviderId: 'local',
+    wordTranslationProviderId: 'relay',
   });
   assert.equal(settings.providers.length, 2);
   assert.equal(settings.providers[0].baseURL, 'https://relay.example/v1');
   assert.equal(settings.providers[1].baseURL, 'http://localhost:11434/v1');
   assert.equal(activeProvider(settings).model, 'model-b');
+  assert.equal(settings.wordTranslationProviderId, 'relay');
 });
 
 test('invalid and duplicate provider IDs are repaired while a missing active selection falls back', () => {
@@ -41,6 +43,7 @@ test('invalid and duplicate provider IDs are repaired while a missing active sel
   assert.deepEqual(settings.providers.map(provider => provider.id), ['same', 'same-2']);
   assert.equal(settings.activeProviderId, 'same');
   assert.equal(activeProvider(settings).name, 'First');
+  assert.equal(settings.wordTranslationProviderId, '');
 });
 
 test('empty settings use an editable default provider', () => {
@@ -49,4 +52,7 @@ test('empty settings use an editable default provider', () => {
   assert.equal(settings.providers[0].id, DEFAULT_SETTINGS.providers[0].id);
   assert.equal(settings.providers[0].baseURL, 'https://api.openai.com/v1');
   assert.equal(settings.autoTranslate, true);
+  assert.equal(settings.offlineDictionary, true);
+  assert.equal(settings.translationKeepOpen, true);
+  assert.equal(settings.wordTranslationProviderId, '');
 });

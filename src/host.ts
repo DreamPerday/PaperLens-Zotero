@@ -1,5 +1,6 @@
 import { AIClient } from './ai/client';
 import { ReaderController } from './controller';
+import { getJournal, getQuartile, parseQuartileInput, publicationField, quartileLabel, resolvePaperItem, saveJournal, saveQuartile } from './paper-metadata';
 import { Storage } from './storage';
 import { TranslationPopups } from './translation/popup';
 import { findReader, openReader } from './zotero-adapter';
@@ -16,6 +17,8 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   const windows = new Map<any, () => void>();
   const standalone = new Map<any, { panel: HTMLElement; splitter: HTMLElement; entry: ReturnType<typeof mount>; cleanup: () => void }>();
   let paneID: string;
+  let journalRowID: string;
+  let quartileRowID: string;
   const notify = () => {
     for (const { controller } of views.values()) {
       controller.emit();
@@ -128,7 +131,9 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     translate.type = 'button'; translate.textContent = '翻译';
     translate.setAttribute('title', '用当前 AI 模型翻译选文');
     translate.style.cssText = button.style.cssText;
-    translate.addEventListener('click', () => translations.open(reader, translate, quote));
+    translate.addEventListener('click', () => {
+      void translations.openFromPreferences(reader, translate, quote).catch(error => Zotero.logError(error));
+    });
     append(button, translate);
     translations.schedule(reader, translate, quote);
   };
@@ -143,6 +148,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
 
   const plugin = {
     info, storage, ai, views,
+    paperMetadata: { getJournal, getQuartile, saveJournal, saveQuartile, resolvePaperItem },
     async start() {
       await storage.init();
       paneID = Zotero.ItemPaneManager.registerSection({
@@ -161,6 +167,29 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
         },
       });
       if (!paneID) throw new Error('PaperLens 侧栏注册失败。');
+      journalRowID = Zotero.ItemPaneManager.registerInfoRow({
+        rowID: 'paperlens-journal', pluginID: info.id,
+        label: { l10nID: 'paperlens-journal-label' },
+        position: 'afterCreators', multiline: false, nowrap: true, editable: true,
+        onGetData: ({ item }: any) => getJournal(item),
+        onSetData: ({ item, value }: any) => saveJournal(item, value),
+        onItemChange: ({ item, setEnabled, setEditable }: any) => {
+          const paper = resolvePaperItem(item);
+          const allowed = Boolean(paper && publicationField(paper));
+          setEnabled(allowed); setEditable(allowed);
+        },
+      });
+      quartileRowID = Zotero.ItemPaneManager.registerInfoRow({
+        rowID: 'paperlens-quartile', pluginID: info.id,
+        label: { l10nID: 'paperlens-quartile-label' },
+        position: 'end', multiline: false, nowrap: true, editable: true,
+        onGetData: ({ item }: any) => quartileLabel(getQuartile(item)),
+        onSetData: ({ item, value }: any) => saveQuartile(item, parseQuartileInput(value)),
+        onItemChange: ({ item, setEnabled, setEditable }: any) => {
+          const allowed = Boolean(resolvePaperItem(item));
+          setEnabled(allowed); setEditable(allowed);
+        },
+      });
       await Zotero.PreferencePanes.register({ pluginID: info.id, id: 'paperlens-settings', label: 'PaperLens',
         src: info.rootURI + 'content/preferences.xhtml', image: info.rootURI + 'content/icon.svg' });
       Zotero.Reader.registerEventListener('renderTextSelectionPopup', selectionListener, info.id);
@@ -230,6 +259,8 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       views.clear();
       for (const cleanup of preferenceFrames.values()) cleanup(); preferenceFrames.clear();
       if (paneID) Zotero.ItemPaneManager.unregisterSection(paneID);
+      if (journalRowID) Zotero.ItemPaneManager.unregisterInfoRow(journalRowID);
+      if (quartileRowID) Zotero.ItemPaneManager.unregisterInfoRow(quartileRowID);
       Zotero.PreferencePanes.unregister('paperlens-settings');
       await storage.flush();
     },

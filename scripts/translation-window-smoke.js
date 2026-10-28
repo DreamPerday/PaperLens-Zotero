@@ -39,13 +39,12 @@ try {
   await pause(50);
   assert(ui().querySelector('.translation-body').scrollHeight > ui().querySelector('.translation-body').clientHeight, 'Long translation does not scroll');
   view._iframeWindow.document.getElementById('viewerContainer').dispatchEvent(new view._iframeWindow.Event('scroll', { bubbles: true }));
-  await wait(() => !popup(), 'PDF scrolling does not close translation');
-  await select();
-  await wait(() => popup(), 'Translation did not reopen');
+  await pause(100);
+  assert(popup(), 'PDF scrolling closed the translation popup');
   reader.close();
   await wait(() => ![...plugin.views.values()].some(candidate => candidate.controller.reader === reader), 'Closing reader did not clean sidebar');
   assert(!hostDoc.querySelector('.paperlens-translation-popup'), 'Closing reader left a detached popup');
-  return { passed: ['standalone PDF window', 'correct quote', 'window isolation', 'PDF viewport bounds', 'long text scrolls', 'PDF scroll dismissal', 'window cleanup'] };
+  return { passed: ['standalone PDF window', 'correct quote', 'window isolation', 'PDF viewport bounds', 'long text scrolls', 'PDF scroll keeps popup', 'window cleanup'] };
 } finally {
   if (reader?._window && !reader._window.closed) reader.close();
   await plugin.storage.saveSettings(saved);

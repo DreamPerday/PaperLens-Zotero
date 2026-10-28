@@ -11,9 +11,11 @@ export interface ProviderSummary { id: string; name: string; baseURL: string; mo
 export interface Settings {
   providers: AIProvider[]; activeProviderId: string;
   depth: Depth; hints: boolean; contextChars: number; autoTranslate: boolean;
+  wordTranslationProviderId: string; offlineDictionary: boolean; translationKeepOpen: boolean;
 }
 export interface TranslationState {
   quote: Quote; content: string; model: string; status: 'idle' | Status;
+  provider: string; scope: 'word' | 'selection'; source: 'dictionary' | 'provider';
   autoTranslate: boolean; configured: boolean; error: string;
 }
 export interface TranslationBridge {

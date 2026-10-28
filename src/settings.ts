@@ -15,6 +15,9 @@ export const DEFAULT_SETTINGS: Settings = {
   hints: true,
   contextChars: 32000,
   autoTranslate: true,
+  wordTranslationProviderId: '',
+  offlineDictionary: true,
+  translationKeepOpen: true,
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -71,6 +74,10 @@ export function normalizeSettings(value: unknown): Settings {
   const activeProviderId = providers.some(provider => provider.id === requestedActiveID)
     ? requestedActiveID
     : providers[0].id;
+  const requestedWordProviderID = text(raw.wordTranslationProviderId);
+  const wordTranslationProviderId = providers.some(provider => provider.id === requestedWordProviderID)
+    ? requestedWordProviderID
+    : '';
   const depth: Depth = raw.depth === 'simple' || raw.depth === 'deep' ? raw.depth : 'standard';
   const contextChars = typeof raw.contextChars === 'number' && Number.isFinite(raw.contextChars)
     ? raw.contextChars
@@ -83,6 +90,11 @@ export function normalizeSettings(value: unknown): Settings {
     hints: typeof raw.hints === 'boolean' ? raw.hints : DEFAULT_SETTINGS.hints,
     contextChars,
     autoTranslate: typeof raw.autoTranslate === 'boolean' ? raw.autoTranslate : DEFAULT_SETTINGS.autoTranslate,
+    wordTranslationProviderId,
+    offlineDictionary: typeof raw.offlineDictionary === 'boolean' ? raw.offlineDictionary : DEFAULT_SETTINGS.offlineDictionary,
+    translationKeepOpen: typeof raw.translationKeepOpen === 'boolean'
+      ? raw.translationKeepOpen
+      : DEFAULT_SETTINGS.translationKeepOpen,
   };
 }
 

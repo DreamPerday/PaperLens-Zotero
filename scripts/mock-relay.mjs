@@ -12,7 +12,9 @@ const server = createServer(async (req, res) => {
   res.setHeader('Content-Type', body.stream ? 'text/event-stream' : 'application/json');
   if (!body.stream) { res.end(JSON.stringify({ choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }] })); return; }
   const prompt = body.messages.map(m => m.content).join('\n');
-  const answer = /PaperLens 学术翻译助手/.test(prompt) ?
+  const answer = /学术英汉词典/.test(prompt) ?
+    '检索；恢复\n\n**常用义项**：检索过程；信息恢复' :
+  /PaperLens 学术翻译助手/.test(prompt) ?
     '为了隔离检索带来的影响，我们在各个实验条件中固定生成模型。\n\n准确率提高了 **12%**；变量 $x_i$ 保持不变。\n\n$$\\frac{a+b}{c}=\\sum_{i=1}^{n}x_i$$' :
     /逐句注释/.test(prompt) ?
     '### 这段说了什么\n固定生成模型，让实验主要检验检索带来的影响。[第1页](#source-b6)\n\n### 论证作用\n交代控制变量，帮助判断结果变化能否归因于检索。\n\n### 关联段落\n结果段提供支持，但局限段限制了外推范围。[第2页](#source-b11) [局限](#source-b14)' :

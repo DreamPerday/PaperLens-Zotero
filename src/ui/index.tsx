@@ -55,13 +55,32 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
     chooseProvider(provider.id);
     setNotice('已新增服务商，填写连接信息并保存后即可使用。');
   };
+  const addLocalProvider = () => {
+    if (!settings) return;
+    let suffix = Date.now().toString(36);
+    while (settings.providers.some(provider => provider.id === `local-${suffix}`)) suffix += 'x';
+    const provider: AIProvider = {
+      id: `local-${suffix}`, name: '本地 Ollama',
+      baseURL: 'http://127.0.0.1:11434/v1', apiKey: '', model: 'qwen2.5:0.5b',
+    };
+    setSettings(current => current ? {
+      ...current,
+      providers: [...current.providers, provider],
+      wordTranslationProviderId: provider.id,
+    } : current);
+    chooseProvider(provider.id);
+    setNotice('已添加本地单词翻译服务；请确认 Ollama 已运行并已拉取该模型。');
+  };
   const removeProvider = () => {
     if (!settings || !selectedProvider || settings.providers.length <= 1) return;
     const providers = settings.providers.filter(provider => provider.id !== selectedProvider.id);
     const activeProviderId = settings.activeProviderId === selectedProvider.id
       ? providers[0].id
       : settings.activeProviderId;
-    setSettings({ ...settings, providers, activeProviderId });
+    const wordTranslationProviderId = settings.wordTranslationProviderId === selectedProvider.id
+      ? ''
+      : settings.wordTranslationProviderId;
+    setSettings({ ...settings, providers, activeProviderId, wordTranslationProviderId });
     chooseProvider(activeProviderId);
     setNotice('服务商已移除，保存设置后生效。');
   };
@@ -79,6 +98,7 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
           {settings.providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name || '未命名服务商'}</option>)}
         </select></label>
         <button disabled={Boolean(busy)} onClick={addProvider}>+ 新增服务商</button>
+        <button disabled={Boolean(busy)} onClick={addLocalProvider} title="添加用于单个英文单词翻译的本地 Ollama 服务">+ 本地模型</button>
       </div>
       {selectedProvider && <section className="provider-card" aria-label="服务商连接设置">
         <div className="provider-card-heading">
@@ -109,10 +129,25 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
       <label className="check"><input type="checkbox" checked={settings.hints} onChange={e => update('hints', e.target.checked)}/>显示阅读提示与示例问题</label>
       <label className="check"><input type="checkbox" checked={settings.autoTranslate !== false} onChange={e => update('autoTranslate', e.target.checked)}/>选中 PDF 原文后自动显示翻译浮窗</label>
       <p className="field-help">默认译为简体中文，沿用当前模型。选文会发送到配置的 AI 服务；关闭后可点击选文工具栏的“翻译”。</p>
+      <label className="check"><input type="checkbox" checked={settings.translationKeepOpen !== false} onChange={e => update('translationKeepOpen', e.target.checked)}/>点击浮窗外或滚动 PDF 时保持译文打开</label>
+      <p className="field-help">默认开启，方便边看原文边读译文。关闭后，点击 PDF 其他区域或滚动页面会自动收起浮窗。</p>
+      <label className="check"><input type="checkbox" checked={settings.offlineDictionary !== false} onChange={e => update('offlineDictionary', e.target.checked)}/>单个英文单词优先使用内置离线词典</label>
+      <p className="field-help">词典命中时直接显示 ECDICT 中文释义，不发起任何网络请求；未命中时才使用下方单词服务商。</p>
+      <label>单词翻译服务商<select value={settings.wordTranslationProviderId} onChange={e => update('wordTranslationProviderId', e.target.value)}>
+        <option value="">跟随当前服务商（可能产生远程 Token）</option>
+        {settings.providers.map(provider => <option key={provider.id} value={provider.id} disabled={!provider.baseURL.trim() || !provider.model.trim()}>
+          {provider.name}{!provider.baseURL.trim() || !provider.model.trim() ? ' · 未配置' : ''}
+        </option>)}
+      </select></label>
+      <p className="field-help">仅当选区是单个英文单词时使用，句子和段落仍走当前服务商。选择本机 Ollama/LM Studio 等 OpenAI 兼容服务可避免远程 Token 消耗。</p>
       <details><summary>高级设置</summary><label>单次原文上下文预算（字符）<input type="number" min="4000" max="160000" step="4000" value={settings.contextChars} onChange={e => update('contextChars', Number(e.target.value))}/></label><p className="field-help">长文概览会分段处理全文。预算应与模型实际上下文容量匹配。</p></details>
-      <p className="privacy">每个服务商的密钥分别保存在本机凭据存储。主动提问、分析或自动翻译时，只会将相关内容发送给当前选中的服务商。</p>
+      <p className="privacy">每个服务商的密钥分别保存在本机凭据存储。句子翻译、提问和分析使用当前服务商；单个英文单词可按上方设置发送给专用本地服务。</p>
       <div className="actions"><button className="primary" disabled={Boolean(busy) || !activeProvider?.baseURL.trim() || !activeProvider?.model.trim()} onClick={() => act('save', async () => {
         if (!Number.isFinite(settings.contextChars) || settings.contextChars < 4000 || settings.contextChars > 160000) throw new Error('上下文预算请设为 4000–160000 字符。');
+        const wordProvider = settings.providers.find(provider => provider.id === settings.wordTranslationProviderId);
+        if (settings.wordTranslationProviderId && (!wordProvider?.baseURL.trim() || !wordProvider?.model.trim())) {
+          throw new Error('请先补全单词翻译服务商的 Base URL 和模型。');
+        }
         const prepared: Settings = {
           ...settings,
           providers: settings.providers.map(provider => ({

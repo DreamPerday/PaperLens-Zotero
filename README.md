@@ -2,18 +2,18 @@
 
 帮助读懂和核对论文的 AI 阅读助手。直接使用 Zotero 的 PDF 阅读器，在常驻侧栏里提问、精读、生成概览和核对论文依据。
 
-当前版本为 **0.3.1**，在选文自动翻译基础上新增多服务商配置和失败内容替换；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前版本为 **0.3.3**，在选文自动翻译基础上新增多服务商、内置离线词典、单词本地路由、失败内容替换和期刊分区信息；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
 
 ## 安装与开始阅读
 
-1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.1.xpi`。从源码构建时，文件位于 `dist/`。
+1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.3.xpi`。从源码构建时，文件位于 `dist/`。
 2. 打开 Zotero → **工具 → 插件**，点击齿轮 → **从文件安装插件**，选择此 XPI。
 3. 打开一份本机 PDF，点击阅读器工具栏的 **PaperLens**，或右侧 PaperLens 图标。
 4. 在侧栏的 **设置** 中添加服务商，并填写各自的 **显示名称、Base URL、API Key、模型 ID**。可以保存多个服务商；从 Zotero 设置左侧的 **PaperLens** 也可以进入。
 5. 选择要测试的服务商，点击 **获取模型** 后选择模型，或手动填写。**测试此服务商** 使用当前表单；测试成功后点击 **保存设置**。
 6. 在 PDF 中选中句子或段落，点击选文工具中的 **问 PaperLens**，输入自己的问题并发送。
 
-支持配置多个 OpenAI 兼容服务商、中转站和本地模型。每个服务商拥有独立的 Base URL、Key、模型和显示名称，可分别测试；在设置页点击 **设为当前** 后，问答、概览、注解和翻译只使用选中的服务商。Base URL 可以是服务根地址或 `/v1` 地址。服务未开放模型列表时，手动填写模型 ID 即可。
+支持配置多个 OpenAI 兼容服务商、中转站和本地模型。每个服务商拥有独立的 Base URL、Key、模型和显示名称，可分别测试；在设置页点击 **设为当前** 后，问答、概览、注解和长句翻译只使用选中的服务商。Base URL 可以是服务根地址或 `/v1` 地址。服务未开放模型列表时，手动填写模型 ID 即可。
 
 插件不需要启动现有桌面版、Electron、Python 后端或 PaddleOCR，也不需要 PaddleOCR Key。扫描件须先获得可用文字层。
 
@@ -25,6 +25,12 @@
 | 注解 | 选中原文后逐句分析；也可以不选文，一键按段落生成全文注解 |
 | 概览 | 提取研究问题、方法、结果、贡献和局限；长文分段后汇总 |
 | 证据核对 | 输入一个具体主张或选中结论，判断支持、部分支持或当前依据不足，并列出限制 |
+
+## 期刊与分区
+
+选中论文条目后，Zotero **信息** 区会出现 **期刊 / 出版物** 和 **JCR / 中科院分区** 两行。期刊直接写入 Zotero 标准出版字段；会议论文、图书章节和预印本会使用对应出版物字段。
+
+分区值写入条目标签，例如 `PaperLens/JCR-Q1`、`PaperLens/CAS-2`，因此可以在 Zotero 标签区筛选和同步。编辑时可输入 `Q1`、`JCR Q1`、`1区` 或 `中科院 1区`，留空可清除。插件不会联网自动查询期刊或分区。
 
 侧栏中切换任务、带入选文、改变解释深度或示例问题不会自动生成回答；开启选文自动翻译时，PDF 选文会单独调用翻译。解释深度可选“简明 / 标准 / 深入”；阅读提示可以在设置中关闭。
 
@@ -39,16 +45,22 @@
 
 ## 选文翻译浮窗
 
-配置 AI 后，在 PDF 中选中句子或段落，停留约半秒即可自动显示简体中文译文。翻译沿用当前服务商和当前模型，不需要打开侧栏或输入问题；请求只包含当前选文，不会读取整篇论文作为翻译上下文，也不会写入问答历史。
+配置 AI 后，在 PDF 中选中句子或段落，停留约半秒即可自动显示简体中文译文。翻译不需要打开侧栏或输入问题；请求只包含当前选文，不会读取整篇论文作为翻译上下文，也不会写入问答历史。
 
-浮窗支持流式译文、Markdown 与数学公式、展开原文、复制、停止和重试。拖动标题栏可移动浮窗，长译文在窗内滚动。点击关闭、按 Esc、点击原文其他位置或滚动 PDF 可收起浮窗；未完成的翻译会取消。重新选文时，旧请求会取消，新译文只对应新的选区。
+选区是单个英文单词时，默认优先查询内置的离线英汉词典。词典命中后直接显示中文释义，不发起网络或模型请求；内置词典收录约 5.8 万条常见、考试和较高频词条，并支持常见复数、过去式和进行时的词形还原。
+
+离线词典未命中时，可以在设置中指定专用的 **单词翻译服务商**，建议使用本机 Ollama/LM Studio 的小模型。单词请求使用更短的词典提示词，只访问该专用服务，不调用当前远程服务商，因此不会消耗远程 Token。短语、句子和段落仍使用当前服务商。设置中也可以通过 **本地模型** 快捷添加默认的 Ollama 地址 `http://127.0.0.1:11434/v1` 和 `qwen2.5:0.5b` 示例，模型需要用户自行安装。
+
+浮窗支持流式译文、Markdown 与数学公式、展开原文、复制、停止和重试。拖动标题栏可移动浮窗，长译文在窗内滚动。点击关闭、按 Esc、重新选择其他原文、追问或关闭阅读器时收起浮窗。设置中的 **点击浮窗外或滚动 PDF 时保持译文打开** 默认开启，方便边看原文边读译文；关闭后会恢复为点击其他区域或滚动页面时自动收起。未完成的翻译会在明确关闭或更换选文时取消。
 
 在浮窗底部或 PaperLens 设置中关闭 **选中后自动翻译**，此后选文不再自动请求模型，需要时点击原生选文工具栏的 **翻译**。点击 **在侧栏追问** 会将同一选文带入问答，用户输入问题后才发起问答请求。
 
 ## 数据与隐私
 
 - 每个服务商的 AI Key 分别使用 Zotero 所在环境的 Mozilla 凭据存储 `Services.logins`，不写入普通配置、笔记或 XPI。
-- 服务商列表、显示名称、服务地址、模型、当前服务商、深度、上下文预算和自动翻译偏好保存在 `extensions.paperlens.settings` 偏好中。
+- 服务商列表、显示名称、服务地址、模型、当前服务商、单词翻译服务商、深度、上下文预算和自动翻译偏好保存在 `extensions.paperlens.settings` 偏好中。
+- 期刊写入条目标准出版字段；分区写入条目标签，并遵循 Zotero 自身的数据同步规则。
+- 离线词典随 XPI 本地提供，词条查询不会上传选中的单词。
 - 原文索引及阅读记录存放在 **Zotero 数据目录下的 `paperlens/`**，按 `libraryID_attachmentKey` 区分附件，使用 JSON 保存。
 - 论文问答、精读等主动操作会向用户配置的服务发送相关原文及近期对话；开启自动翻译时，选中 PDF 文字会将选文发送到同一服务。模型发现和连接测试同样会访问配置的服务。
 - 阅读历史只在本机保存。主动保存的 Zotero 笔记遵循用户的 Zotero 同步设置；卸载插件会保留本机阅读记录和笔记。
@@ -75,7 +87,7 @@ npm test
 npm run build
 ```
 
-构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.1.xpi`。KaTeX 样式和字体会随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
+构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.3.xpi`。KaTeX 样式、字体和精简离线词典随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
 
 | 文件 | 负责的能力 |
 | --- | --- |
@@ -87,7 +99,9 @@ npm run build
 | `src/ai/client.ts` | 兼容 API、模型列表、流式响应和停止 |
 | `src/controller.ts` | 任务、历史、停止重试与来源关联 |
 | `src/history.ts` | 新请求替换同任务失败或中断的旧回答 |
+| `src/paper-metadata.ts` | 期刊标准字段、JCR/中科院分区标签 |
 | `src/translation/` | 选文翻译请求、浮窗定位、拖动与生命周期 |
+| `src/translation/dictionary.json` | 由 ECDICT 生成的精简离线英汉词库 |
 | `src/settings.ts` | 多服务商设置、旧配置迁移和当前服务商选择 |
 | `src/storage.ts` | 多服务商凭据、本地索引与历史 |
 | `src/ui/` | 侧栏内容和交互 |
@@ -116,10 +130,13 @@ node scripts/command.mjs scripts/ui-smoke.js
 node scripts/command.mjs scripts/annotation-smoke.js
 node scripts/command.mjs scripts/resize-smoke.js
 node scripts/command.mjs scripts/history-smoke.js
+node scripts/command.mjs scripts/metadata-smoke.js
 node scripts/command.mjs scripts/translation-smoke.js
 node scripts/command.mjs scripts/translation-drag-smoke.js
 node scripts/command.mjs scripts/translation-window-smoke.js
 ```
+
+离线词典可通过 `python scripts/build-dictionary.py` 从 MIT 许可的 ECDICT 数据重新生成；来源和许可证说明见 `src/translation/OFFLINE_DICTIONARY.md`。
 
 验证不重启升级时，先在隔离 profile 中运行旧版本并执行一次原生检查，再构建新版本，运行 `node scripts/command.mjs scripts/upgrade-smoke.js`；它会安装仓库当前版本并检查新版脚本与样式是否生效。
 
