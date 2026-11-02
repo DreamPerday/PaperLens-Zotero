@@ -2,7 +2,7 @@
 
 帮助读懂和核对论文的 AI 阅读助手。直接使用 Zotero 的 PDF 阅读器，在常驻侧栏里提问、精读、生成概览和核对论文依据。
 
-当前源码版本为 **0.3.9**，新增首次导入自动补全出版信息、空结果重试一次及文献列表出版物/年份/综合等级列，同时保留多服务商、离线词典、选文翻译和 EasyScholar 自定义数据集。正式安装包以 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 已发布版本为准，未发布的本地版本可自行构建。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前版本为 **0.3.9**，新增首次导入自动补全出版信息、空结果重试一次及文献列表出版物/年份/综合等级列，同时保留多服务商、离线词典、选文翻译和 EasyScholar 自定义数据集。可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载安装包，也可从源码自行构建。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
 
 ## 安装与开始阅读
 
