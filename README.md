@@ -2,11 +2,11 @@
 
 帮助读懂和核对论文的 AI 阅读助手。直接使用 Zotero 的 PDF 阅读器，在常驻侧栏里提问、精读、生成概览和核对论文依据。
 
-当前版本为 **0.3.9**，新增首次导入自动补全出版信息、空结果重试一次及文献列表出版物/年份/综合等级列，同时保留多服务商、离线词典、选文翻译和 EasyScholar 自定义数据集。可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载安装包，也可从源码自行构建。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前版本为 **0.3.10**，修正 EasyScholar 等级筛选和旧标签清理，并补齐常见等级中文名称。正式安装包可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载；也可从源码构建。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.7 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
 
 ## 安装与开始阅读
 
-1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载对应版本的 XPI。从当前源码构建时，文件为 `dist/paperlens-zotero-0.3.9.xpi`。
+1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载对应版本的 XPI。从当前源码构建时，文件为 `dist/paperlens-zotero-0.3.10.xpi`。
 2. 打开 Zotero → **工具 → 插件**，点击齿轮 → **从文件安装插件**，选择此 XPI。
 3. 打开一份本机 PDF，点击阅读器工具栏的 **PaperLens**，或右侧 PaperLens 图标。
 4. 在侧栏的 **设置** 中添加服务商，并填写各自的 **显示名称、Base URL、API Key、模型 ID**。可以保存多个服务商；从 Zotero 设置左侧的 **PaperLens** 也可以进入。
@@ -40,13 +40,13 @@
 
 自动补全只添加缺失信息，保留已有出版物、DOI、日期和手动等级。在线匹配指向其他出版版本时，不把该版本等级混入原出版物。插件启动时不会扫描旧文献；编辑已有条目不会触发自动查询。可以在 PaperLens 设置中关闭 **首次导入论文后自动补全出版信息与等级**，无需先配置 AI 模型即可保存此选项。独立 PDF 需要 Zotero 先识别出带标题的论文条目；插件不负责 OCR。
 
-在设置中填写 EasyScholar 开放接口密钥后，插件还会调用 EasyScholar `getPublicationRank` 接口，读取 `sci`、`sciUp`、`sciBase`、`ccf` 和自定义数据集字段，自动填写 JCR、中科院分区和 CCF。密钥在 EasyScholar 官网登录后从 **开放接口** 页面获取，并保存在本机 Zotero 凭据库。
+在设置中填写 EasyScholar 开放接口密钥后，插件会合并接口返回的 `officialRank.all` 与 `officialRank.select`。设置为显示全部时，会显示 JCR/SSCI、中科院基础版/升级版/小类、新锐分区/小类、影响因子、JCI、ESI、EI、CCF、四川大学分级、常见高校分级及账号启用的自定义数据集。筛选模式下，JCR 与中科院基础版/升级版始终保留，其它等级（包括 SSCI、CCF 和影响指标）只显示已勾选项。已知等级使用中文名称，未知数据集沿用接口返回的名称。每次查询发现新选项后会合并目录并即时刷新已打开的设置页；详情区支持换行，目录等级列和悬停提示包含已保存的等级。密钥在 EasyScholar 官网登录后从 **开放接口** 页面获取，并保存在本机 Zotero 凭据库。
 
 用户账号启用的 EasyScholar 自定义数据集也会写入条目并在 **出版信息** 中显示彩色徽标；例如数据集中返回 `hzau` 时显示为 **华中农业大学**。插件不内置未经核验的华农分级表，因此需要在 EasyScholar 中启用对应数据集后才能查询到等级。
 
 EasyScholar 的 `rankInfo` 只描述数据集可用档位；实际论文等级必须由 `rank` 中的 UUID 配对确定。若 `rank` 为空，查询确认框会显示“华中农业大学：未匹配”及可选档位，但不会把 A+/A/B/C 中的某一项误写成论文等级。插件在未匹配到自定义数据集等级时会继续尝试去掉年份等后缀后的出版物名称。
 
-EasyScholar 设置中可以关闭“显示接口返回的全部数据集”，再勾选需要的数据集，或直接填写 `HZAU`、`UIBE` 等接口简称。过滤只影响自定义数据集；JCR、中科院分区和 CCF 始终保留。在线查询会自动记录接口返回的数据集清单，供后续勾选。
+EasyScholar 设置中可以关闭“显示接口返回的全部等级”，再勾选需要的分区、指标或数据集；常见选项使用中文名称，未知名称保留接口原名。也可以手动输入 `HZAU`、`UIBE` 等接口简称。筛选结果会用于手动查询和首次导入自动补全；自动补全会保留 JCR、中科院基础版/升级版和已勾选等级，并清除未勾选的旧等级标签。
 
 选择保存后，下一次在线查询只写入并显示选中的数据集；已有条目需要重新执行一次在线查询来清理不需要的旧数据集标签。
 
@@ -107,7 +107,7 @@ npm test
 npm run build
 ```
 
-构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.9.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
+构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.10.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
 
 | 文件 | 负责的能力 |
 | --- | --- |

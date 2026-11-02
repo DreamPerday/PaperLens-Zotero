@@ -72,17 +72,26 @@ test('EasyScholar dataset selection is sanitized and the discovered catalog is m
     easyScholarDatasetCatalog: [
       { key: 'HZAU', name: '华中农业大学' },
       { key: 'hzau', name: '重复项' },
+      { key: 'UIBE', name: 'uibe' },
+      { key: 'sciif', name: 'sciif' },
     ],
   });
 
   assert.equal(settings.easyScholarShowAllDatasets, false);
   assert.deepEqual(settings.easyScholarDatasetKeys, ['HZAU', 'UIBE', 'bad']);
-  assert.deepEqual(settings.easyScholarDatasetCatalog, [{ key: 'HZAU', name: '华中农业大学' }]);
+  assert.deepEqual(settings.easyScholarDatasetCatalog, [
+    { key: 'HZAU', name: '华中农业大学' },
+    { key: 'UIBE', name: '对外经济贸易大学分级' },
+    { key: 'sciif', name: '影响因子' },
+  ]);
   assert.deepEqual(mergeEasyScholarDatasetCatalog(settings.easyScholarDatasetCatalog, [
     { key: 'UIBE', name: '对外经济贸易大学' },
     { key: 'HZAU', name: '华中农业大学' },
+    { key: 'newDataset', name: 'New metrics collection' },
   ]), [
     { key: 'HZAU', name: '华中农业大学' },
-    { key: 'UIBE', name: '对外经济贸易大学' },
+    { key: 'UIBE', name: '对外经济贸易大学分级' },
+    { key: 'sciif', name: '影响因子' },
+    { key: 'newDataset', name: 'New metrics collection' },
   ]);
 });

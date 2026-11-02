@@ -53,6 +53,7 @@ export interface Bridge {
   newConversation(): Promise<void>; refreshSource(): Promise<void>; openSettings(): void;
   refreshModels(): Promise<void>; setModel(model: string): Promise<void>; setProvider(id: string): Promise<void>;
   getSettings(): Promise<Settings>; saveSettings(settings: Settings): Promise<void>;
+  onSettingsChanged?(listener: (settings: Settings) => void): () => void;
   models(provider: AIConnection): Promise<string[]>; testConnection(provider: AIConnection): Promise<string>;
   copy(text: string): void;
 }

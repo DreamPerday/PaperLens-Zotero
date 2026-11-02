@@ -22,8 +22,15 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
   useEffect(() => {
-    bridge.getSettings().then(value => { setSettings(value); setSelectedProviderID(value.activeProviderId); })
+    const refreshCatalog = (value: Settings) => {
+      setSettings(current => current ? { ...current, easyScholarDatasetCatalog: value.easyScholarDatasetCatalog } : value);
+      setSelectedProviderID(current => value.providers.some(provider => provider.id === current)
+        ? current : value.activeProviderId);
+    };
+    bridge.getSettings().then(refreshCatalog)
       .catch(e => setError(e instanceof Error ? e.message : String(e)));
+    const unsubscribe = bridge.onSettingsChanged?.(refreshCatalog);
+    return () => unsubscribe?.();
   }, [bridge]);
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     setSettings(current => ({ ...current!, [key]: value }));
@@ -150,9 +157,9 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
       </div></label>
       <p className="field-help">在 EasyScholar 官网登录后，从“开放接口”页面获取密钥。密钥存入本机 Zotero 凭据库；没有密钥时在线查询仍可识别出版物，但不会自动填写 EasyScholar 分区。</p>
       <fieldset className="dataset-settings">
-        <legend>EasyScholar 数据集显示</legend>
+        <legend>EasyScholar 等级显示</legend>
         <label className="check"><input type="checkbox" checked={settings.easyScholarShowAllDatasets !== false}
-          onChange={e => update('easyScholarShowAllDatasets', e.target.checked)}/>显示接口返回的全部数据集</label>
+          onChange={e => update('easyScholarShowAllDatasets', e.target.checked)}/>显示接口返回的全部等级</label>
         {settings.easyScholarShowAllDatasets === false && <>
           {settings.easyScholarDatasetCatalog.length > 0
             ? <div className="dataset-grid">{settings.easyScholarDatasetCatalog.map(dataset => <label className="check dataset-choice" key={dataset.key}>
@@ -163,10 +170,10 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
                 {dataset.name || dataset.key}
               </label>)}</div>
             : <p className="field-help">还没有发现可用数据集。先在线查询一次论文，或直接在下方填写接口返回的简称。</p>}
-          <label>需要显示的数据集简称<input value={settings.easyScholarDatasetKeys.join(', ')}
+          <label>手动添加数据集简称<input value={settings.easyScholarDatasetKeys.join(', ')}
             placeholder="例如：HZAU, UIBE, SWJTU"
             onChange={e => update('easyScholarDatasetKeys', e.target.value.split(/[,，\s]+/).map(value => value.trim()).filter(Boolean))}/></label>
-          <p className="field-help">只保留这里列出的数据集；标准 JCR、中科院分区和 CCF 不受影响。留空则不显示任何自定义数据集。</p>
+          <p className="field-help">JCR 和中科院基础版/升级版始终显示；其他 EasyScholar 等级仅显示勾选项。自动补全时会清除未勾选的旧等级。每次在线查询后会即时更新可选目录。</p>
         </>}
       </fieldset>
       <details><summary>高级设置</summary><label>单次原文上下文预算（字符）<input type="number" min="4000" max="160000" step="4000" value={settings.contextChars} onChange={e => update('contextChars', Number(e.target.value))}/></label><p className="field-help">长文概览会分段处理全文。预算应与模型实际上下文容量匹配。</p></details>

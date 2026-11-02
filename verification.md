@@ -1,3 +1,14 @@
+# 0.3.10 验收记录
+
+日期：2026-11-02。环境：Windows，隔离 Zotero 10.0.7 配置，使用合成论文和本地模拟服务。
+
+- EasyScholar 筛选将 JCR、中科院基础版和升级版设为必显；SSCI、CCF、影响指标、新锐分区和其他数据集仅在勾选时显示。
+- 自动补全沿用当前选择，并清理已取消选择的旧等级标签；EasyScholar 请求失败时保留原有数据。
+- 常见数据集名称显示中文，未知数据集沿用接口原名。查询发现的新目录项会即时刷新已打开的设置页。
+- `npm run check`、70 项单元测试和 `npm run build` 通过，生成 `dist/paperlens-zotero-0.3.10.xpi`。
+- `scripts/native-smoke.js` 的 21 项原生流程检查通过；`scripts/dataset-settings-smoke.js` 验证筛选选项及新数据集无需重开设置页即可出现。
+- 安装包仅包含插件运行资源，不包含测试 profile、合成论文、API 密钥或阅读记录。
+
 # 0.3.9 验收记录
 
 日期：2026-11-02。环境：Windows，Zotero 10.0.6。

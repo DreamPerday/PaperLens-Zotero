@@ -22,7 +22,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   const storage = new Storage();
   const ai = new AIClient();
   const views = new Map<HTMLElement, { controller: ReaderController; frame: HTMLIFrameElement; unmount?: () => void }>();
-  const preferenceFrames = new Map<HTMLIFrameElement, () => void>();
+  const preferenceFrames = new Map<HTMLIFrameElement, { controller: ReaderController; cleanup: () => void }>();
   const publicationSections = new Map<HTMLElement, { item: any; refresh: () => Promise<void> }>();
   const windows = new Map<any, () => void>();
   const standalone = new Map<any, { panel: HTMLElement; splitter: HTMLElement; entry: ReturnType<typeof mount>; cleanup: () => void }>();
@@ -44,6 +44,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     apply: async (item, result) => {
       await applyPublicationLookup(item, result, { fillMissingOnly: true });
       await storage.rememberEasyScholarDatasets(result.datasetCatalog || []);
+      notify();
       for (const row of [journalRowID, quartileRowID, conferenceRowID, easyScholarRowID]) {
         if (row) Zotero.ItemPaneManager.refreshInfoRow(row);
       }
@@ -55,6 +56,9 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       controller.emit();
       void controller.refreshSettings().catch(error => Zotero.logError(error));
     }
+    for (const { controller } of preferenceFrames.values()) {
+      void controller.refreshSettings().catch(error => Zotero.logError(error));
+    }
   };
   const translations = new TranslationPopups(sidebarURL, storage, ai, show, notify);
 
@@ -63,7 +67,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     if (!paper) { body.replaceChildren(); return; }
     const doc = body.ownerDocument;
     (doc as any).l10n?.addResourceIds(['paperlens.ftl']);
-    let labels = ['在线查询出版信息', '期刊 / 出版物', 'JCR / 中科院分区', '会议等级（CCF / CORE）', '未设置', '查询中…', '保存失败', 'EasyScholar 数据集'];
+    let labels = ['在线查询出版信息', '期刊 / 出版物', 'JCR / 中科院分区', '会议等级（CCF / CORE）', '未设置', '查询中…', '保存失败', 'EasyScholar 等级与数据集'];
     try {
       labels = await (doc as any).l10n.formatValues([
         { id: 'paperlens-publication-query' }, { id: 'paperlens-journal-label' },
@@ -148,6 +152,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       settings.easyScholarDatasetKeys, settings.easyScholarShowAllDatasets);
     await storage.rememberEasyScholarDatasets(result.datasetCatalog || [])
       .catch(error => Zotero.logError(error));
+    notify();
     const ranks = [
       result.jcr ? quartileLabel(result.jcr) : '',
       result.cas ? quartileLabel(result.cas) : '',
@@ -375,7 +380,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       easyScholarRowID = Zotero.ItemPaneManager.registerInfoRow({
         rowID: 'paperlens-easyscholar-ranks', pluginID: info.id,
         label: { l10nID: 'paperlens-easyscholar-ranks-label' },
-        position: 'end', multiline: false, nowrap: true, editable: false,
+        position: 'end', multiline: true, nowrap: false, editable: false,
         onGetData: ({ item }: any) => easyScholarRanksLabel(item),
         onItemChange: ({ item, setEnabled }: any) => {
           setEnabled(Boolean(resolvePaperItem(item)));
@@ -471,7 +476,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       doc.defaultView?.addEventListener('unload', cleanup, { once: true });
       frame.addEventListener('load', ready);
       frame.addEventListener('paperlens-ui-ready', ready);
-      frame.src = sidebarURL; body.replaceChildren(frame); preferenceFrames.set(frame, cleanup);
+      frame.src = sidebarURL; body.replaceChildren(frame); preferenceFrames.set(frame, { controller, cleanup });
     },
     async stop() {
       if (importObserverID) Zotero.Notifier.unregisterObserver(importObserverID);
@@ -485,7 +490,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       for (const view of standalone.values()) view.cleanup();
       for (const view of views.values()) { view.unmount?.(); await view.controller.dispose(); view.frame.remove(); }
       views.clear();
-      for (const cleanup of preferenceFrames.values()) cleanup(); preferenceFrames.clear();
+      for (const { cleanup } of preferenceFrames.values()) cleanup(); preferenceFrames.clear();
       if (paneID) Zotero.ItemPaneManager.unregisterSection(paneID);
       if (journalRowID) Zotero.ItemPaneManager.unregisterInfoRow(journalRowID);
       if (quartileRowID) Zotero.ItemPaneManager.unregisterInfoRow(quartileRowID);

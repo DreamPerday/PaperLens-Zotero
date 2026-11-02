@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { publicationColumnData } from '../src/publication-columns';
 import {
   conferenceRankLabel, getConferenceRanks, getJournal, getJournalRanks, getQuartile, journalRanksLabel, lookupConferenceRank,
-  parseConferenceRank, parseQuartileInput, publicationField, quartileLabel, quartileTag,
+  easyScholarRankName, parseConferenceRank, parseQuartileInput, publicationField, quartileLabel, quartileTag,
   saveConferenceRanks, saveJournal, saveJournalRanks, saveQuartile, tagsWithQuartile,
 } from '../src/paper-metadata';
 
@@ -61,6 +61,21 @@ test('library columns show publication/year and all rank families from the exist
   assert.equal(publicationColumnData(item, 'year'), '2026');
   assert.equal(publicationColumnData(item, 'ranks'), 'JCR Q1 · 中科院 2区 · CCF-A · CORE-A* · 华中农业大学: A');
   assert.equal(publicationColumnData({ isRegularItem: () => false }, 'ranks'), '');
+});
+
+test('common EasyScholar rank keys have readable labels', () => {
+  assert.equal(easyScholarRankName('xr'), '新锐分区');
+  assert.equal(easyScholarRankName('sciBase'), '中科院基础版分区');
+  assert.equal(easyScholarRankName('sciUp'), '中科院升级版分区');
+  assert.equal(easyScholarRankName('sciUpSmall'), '中科院升级版小类分区');
+  assert.equal(easyScholarRankName('sciif5'), '五年影响因子');
+  assert.equal(easyScholarRankName('sciUpTop'), '中科院升级版顶级期刊');
+  assert.equal(easyScholarRankName('xrTop'), '新锐顶级分区');
+  assert.equal(easyScholarRankName('cpu'), '中国药科大学分级');
+  assert.equal(easyScholarRankName('swjtu'), '西南交通大学分级');
+  assert.equal(easyScholarRankName('newDataset'), '其他等级数据集（newDataset）');
+  assert.equal(easyScholarRankName('newDataset', 'English custom ranking'), 'English custom ranking');
+  assert.equal(easyScholarRankName('newDataset', '校内科研评价等级'), '校内科研评价等级');
 });
 
 test('quarterile helpers create namespaced tags and preserve unrelated tags', () => {

@@ -35,6 +35,7 @@ export class ReaderController {
   private saveTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
   private availableModels: string[] = [];
+  private settingsListeners = new Set<(settings: Settings) => void>();
   private syncTimer: ReturnType<typeof setInterval>;
   private navigationCursor?: ReturnType<typeof readingCursor>;
   readonly bridge: Bridge;
@@ -45,7 +46,7 @@ export class ReaderController {
       setTask: task => { this.state.task = task; if (this.session) this.session.task = task; if (task !== 'close') this.setActiveSource(); this.persistDraft(); this.emit(); },
       setDraft: text => { this.state.draft = text; if (this.session) this.session.draft = text; this.persistDraft(); },
       removeQuote: () => { this.state.quote = undefined; if (this.session) this.session.quote = undefined; this.persistDraft(); this.emit(); },
-      setDepth: async depth => { this.settings = { ...await this.storage.getSettings(), depth }; await this.storage.saveSettings(this.settings); this.notifyAll(); },
+      setDepth: async depth => { this.settings = { ...await this.storage.getSettings(), depth }; await this.storage.saveSettings(this.settings); this.notifySettingsListeners(); this.notifyAll(); },
       send: (text, task) => this.send(text, task), retry: id => this.retry(id), stop: () => ReaderController.requests.get(this.state.identity)?.abort(),
       navigate: (id, messageID) => this.navigate(id, messageID), returnToReading: () => this.returnToReading(),
       saveNote: id => this.save(id), openNote: async id => { await Zotero.getMainWindow().ZoteroPane.selectItem(id); },
@@ -62,8 +63,9 @@ export class ReaderController {
         await storage.saveSettings(settings);
         this.settings = await storage.getSettings();
         this.availableModels = [];
-        this.emit(); this.notifyAll();
+        this.emit(); this.notifySettingsListeners(); this.notifyAll();
       },
+      onSettingsChanged: listener => { this.settingsListeners.add(listener); return () => this.settingsListeners.delete(listener); },
       models: settings => ai.models(settings), testConnection: settings => ai.test(settings),
       copy: text => Components.classes['@mozilla.org/widget/clipboardhelper;1'].getService(Components.interfaces.nsIClipboardHelper).copyString(text),
     };
@@ -110,7 +112,11 @@ export class ReaderController {
     this.settings = await this.storage.getSettings();
     const current = activeProvider(this.settings);
     if ([current.id, current.baseURL, current.apiKey].join('\n') !== previousConnection) this.availableModels = [];
+    this.notifySettingsListeners();
     this.emit();
+  }
+  private notifySettingsListeners() {
+    for (const listener of this.settingsListeners) listener(this.settings);
   }
   async refreshModels() {
     if (this.state.modelsLoading) return;
@@ -136,7 +142,7 @@ export class ReaderController {
     this.settings = await this.storage.getSettings();
     if (!this.availableModels.includes(value)) this.availableModels = [value, ...this.availableModels];
     this.state.notice = `已切换模型：${value}`;
-    this.emit(); this.notifyAll();
+    this.emit(); this.notifySettingsListeners(); this.notifyAll();
   }
   async setProvider(id: string) {
     const settings = await this.storage.getSettings();
@@ -150,7 +156,7 @@ export class ReaderController {
     this.settings = await this.storage.getSettings();
     this.availableModels = [];
     this.state.notice = `已切换服务商：${provider.name}`;
-    this.emit(); this.notifyAll();
+    this.emit(); this.notifySettingsListeners(); this.notifyAll();
   }
   private persistDraft() {
     clearTimeout(this.saveTimer);

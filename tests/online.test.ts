@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyPublicationLookup, easyScholarLookup, lookupPublication } from '../src/paper-online';
 import { getConferenceRanks, getEasyScholarRanks, getJournalRanks, saveEasyScholarRanks } from '../src/paper-metadata';
+import { publicationColumnData } from '../src/publication-columns';
 
 (globalThis as any).Zotero = {
   Items: { get: () => undefined },
@@ -115,6 +116,7 @@ test('automatic fill preserves existing fields/ranks and only adds missing metad
     title: 'Test paper', type: 'journal' as const, venue: 'Test Journal', year: '2026',
     doi: '10.1000/new', source: 'test', ccf: 'A', core: 'A*', jcr: 'JCR-Q1', cas: 'CAS-2',
     ranks: { hzau: 'A', uibe: 'A+' },
+    easyScholarSelection: { showAll: false, keys: ['HZAU'] },
   };
   await applyPublicationLookup(target, result, { fillMissingOnly: true });
   assert.equal(values.DOI, '10.1000/manual');
@@ -133,6 +135,40 @@ test('automatic fill preserves existing fields/ranks and only adds missing metad
   assert.deepEqual(tags, savedTags, 'Ranks must not be mixed between publication versions');
 });
 
+test('automatic fill keeps required and selected ranks while clearing every unselected rank', async () => {
+  const values: Record<string, string> = { title: 'Selected ranks', publicationTitle: 'Journal of Selection' };
+  let tags = [
+    { tag: 'PaperLens/EasyScholar:HZAU=A' },
+    { tag: 'PaperLens/EasyScholar:UIBE=A+' },
+    { tag: 'PaperLens/EasyScholar:sciUp=2区' },
+    { tag: 'PaperLens/EasyScholar:manual=keep' },
+  ];
+  const target = {
+    itemTypeID: 1,
+    isRegularItem: () => true,
+    isAttachment: () => false,
+    getField: (name: string) => values[name] || '',
+    setField: (name: string, value: string) => { values[name] = value; },
+    getTags: () => tags,
+    setTags: (next: typeof tags) => { tags = next; },
+    saveTx: async () => {},
+  };
+  await applyPublicationLookup(target, {
+    title: 'Selected ranks', type: 'journal', venue: 'Journal of Selection', year: '', doi: '',
+    source: 'test', ccf: '', core: '', ranks: { HZAU: 'A+' },
+    easyScholarSelection: { showAll: false, keys: ['HZAU'] },
+    customDatasets: [{ key: 'HZAU', name: '华中农业大学', levels: [], matched: 'A+' }],
+    datasetCatalog: [
+      { key: 'HZAU', name: '华中农业大学', levels: [], matched: 'A+' },
+      { key: 'UIBE', name: '对外经济贸易大学分级', levels: [], matched: 'A+' },
+    ],
+  }, { fillMissingOnly: true });
+
+  assert.deepEqual(getEasyScholarRanks(target).map(rank => [rank.key, rank.value]), [
+    ['HZAU', 'A'], ['sciUp', '2区'],
+  ]);
+});
+
 test('EasyScholar adds JCR and CAS ranks after metadata lookup', async () => {
   const title = 'A Journal Article With EasyScholar';
   const fetcher = (async (input: string | URL | Request) => {
@@ -146,7 +182,13 @@ test('EasyScholar adds JCR and CAS ranks after metadata lookup', async () => {
     if (url.includes('api.openalex.org')) return Response.json({ results: [] });
     if (url.includes('easyscholar.cc/open/getPublicationRank')) {
       return Response.json({ code: 200, data: {
-        officialRank: { all: { sci: 'Q1', sciUp: '2区', ccf: 'A' } },
+        officialRank: { all: {
+          sci: 'Q1', sciUp: '计算机科学2区', sciBase: '工程技术3区',
+          sciUpSmall: '自动化与控制系统2区/计算机：人工智能3区/机器人学3区',
+          sciif: '6.0', sciif5: '5.9', jci: '1.01', esi: '工程科学', eii: 'EI',
+          xr: '计算机科学2区', xrSmall: '人工智能3区', swufe: 'B', uibe: 'C',
+          swjtu: 'A+', hhu: 'B类', xju: '二区', cug: '工程技术T2', scu: '计算机科学C', ccf: 'A',
+        }, select: { sciif: '6.1' } },
         customRank: {
           rank: ['hzau-uuid&&&2'],
           rankInfo: [{ uuid: 'hzau-uuid', abbName: 'hzau', twoRankText: 'A' }],
@@ -158,9 +200,58 @@ test('EasyScholar adds JCR and CAS ranks after metadata lookup', async () => {
   const result = await lookupPublication(item(title, '10.1000/easy'), fetcher, 'easy-secret');
   assert.equal(result.jcr, 'JCR-Q1');
   assert.equal(result.cas, 'CAS-2');
+  assert.equal(result.ranks?.sciBase, '工程技术3区');
+  assert.equal(result.ranks?.sciUp, '计算机科学2区');
+  assert.equal(result.ranks?.sciUpSmall, '自动化与控制系统2区/计算机：人工智能3区/机器人学3区');
+  assert.equal(result.ranks?.xr, '计算机科学2区');
+  assert.equal(result.ranks?.xrSmall, '人工智能3区');
+  assert.equal(result.ranks?.sciif, '6.1');
+  assert.equal(result.ranks?.sciif5, '5.9');
+  assert.equal(result.ranks?.jci, '1.01');
+  assert.equal(result.ranks?.esi, '工程科学');
+  assert.equal(result.ranks?.eii, 'EI');
+  assert.equal(result.ranks?.scu, '计算机科学C');
+  assert.equal(result.ranks?.swufe, 'B');
+  assert.equal(result.ranks?.uibe, 'C');
+  assert.equal(result.ranks?.swjtu, 'A+');
+  assert.equal(result.ranks?.hhu, 'B类');
+  assert.equal(result.ranks?.xju, '二区');
+  assert.equal(result.ranks?.cug, '工程技术T2');
+  assert.ok(!result.customDatasets?.some(dataset => dataset.key === 'sciUp'));
   assert.equal(result.ccf, 'A');
   assert.equal(result.ranks?.hzau, 'A');
   assert.equal(result.rankSource, 'EasyScholar');
+
+  const values: Record<string, string> = { title };
+  let tags: Array<{ tag: string; type?: number }> = [];
+  const target = {
+    itemTypeID: 1,
+    isRegularItem: () => true,
+    isAttachment: () => false,
+    getField: (name: string) => values[name] || '',
+    setField: (name: string, value: string) => { values[name] = value; },
+    getTags: () => tags,
+    setTags: (next: Array<{ tag: string; type?: number }>) => { tags = next; },
+    saveTx: async () => {},
+  };
+  await applyPublicationLookup(target, result);
+  const column = publicationColumnData(target, 'ranks');
+  for (const label of [
+    '中科院基础版分区: 工程技术3区', '中科院升级版分区: 计算机科学2区',
+    '中科院升级版小类分区:', '新锐分区: 计算机科学2区', '新锐小类分区: 人工智能3区',
+    '影响因子: 6.1', '五年影响因子: 5.9', '期刊引文指标（JCI）: 1.01',
+    '基本科学指标学科（ESI）: 工程科学', '工程索引收录: EI',
+    '四川大学期刊分级: 计算机科学C', '西南财经大学分级: B', '对外经济贸易大学分级: C',
+    '西南交通大学分级: A+', '河海大学分级: B类', '新疆大学分级: 二区', '中国地质大学分级: 工程技术T2',
+  ]) assert.ok(column.includes(label), `Directory rank column is missing ${label}`);
+});
+
+test('EasyScholar reads a base CAS quartile when upgraded fields are absent and handles Chinese numerals', async () => {
+  const fetcher = (async () => Response.json({ code: 200, data: {
+    officialRank: { all: { sci: 'Q2', sciBase: '工程技术三区' } },
+  } })) as typeof fetch;
+  const result = await easyScholarLookup(fetcher, 'secret', 'Example Journal');
+  assert.equal(result.cas, 'CAS-3');
 });
 
 test('custom EasyScholar datasets are saved without duplicating standard rank tags', async () => {
@@ -181,10 +272,14 @@ test('custom EasyScholar datasets are saved without duplicating standard rank ta
 
   assert.ok(tags.some(entry => entry.tag === 'PaperLens/JCR-Q1'));
   assert.ok(tags.some(entry => entry.tag === 'PaperLens/EasyScholar:hzau=A'));
+  assert.ok(tags.some(entry => entry.tag === 'PaperLens/EasyScholar:sciUp=2区'));
   assert.ok(!tags.some(entry => entry.tag === 'PaperLens/EasyScholar:old=G'));
-  assert.ok(!tags.some(entry => entry.tag.startsWith('PaperLens/EasyScholar:sci')));
+  assert.ok(!tags.some(entry => entry.tag === 'PaperLens/EasyScholar:sci=Q1'));
   assert.ok(!tags.some(entry => entry.tag.startsWith('PaperLens/EasyScholar:ccf')));
-  assert.deepEqual(getEasyScholarRanks(target), [{ key: 'hzau', name: '华中农业大学', value: 'A' }]);
+  assert.deepEqual(getEasyScholarRanks(target), [
+    { key: 'hzau', name: '华中农业大学', value: 'A' },
+    { key: 'sciUp', name: '中科院升级版分区', value: '2区' },
+  ]);
 });
 
 test('EasyScholar reports dataset levels without inventing a rank when rank is empty', async () => {
@@ -218,7 +313,8 @@ test('EasyScholar reports dataset levels without inventing a rank when rank is e
     levels: ['A+', 'A', 'B', 'C'],
     matched: '',
   });
-  assert.equal(result.customDatasets.find(dataset => dataset.key === 'uibe')?.matched, 'A');
+  assert.equal(result.ranks.uibe, 'A');
+  assert.equal(result.customDatasets.find(dataset => dataset.key === 'uibe')?.name, '对外经济贸易大学分级');
 });
 
 test('EasyScholar retries a normalized venue when only dataset definitions were returned', async () => {
@@ -261,7 +357,7 @@ test('EasyScholar retries a normalized venue when only dataset definitions were 
   assert.equal(result.customDatasets?.[0]?.matched, 'A');
 });
 
-test('EasyScholar keeps only selected custom datasets while preserving standard ranks', async () => {
+test('EasyScholar filters non-core ranks to selected datasets and always keeps JCR and CAS', async () => {
   const title = 'A Journal With Selected Dataset Ranks';
   const fetcher = (async (input: string | URL | Request) => {
     const url = String(input);
@@ -274,7 +370,12 @@ test('EasyScholar keeps only selected custom datasets while preserving standard 
     if (url.includes('api.openalex.org')) return Response.json({ results: [] });
     if (url.includes('easyscholar.cc/open/getPublicationRank')) {
       return Response.json({ code: 200, data: {
-        officialRank: { all: { sci: 'Q1', ccf: 'A', uibe: 'A', swjtu: 'A++' } },
+        officialRank: { all: {
+          sci: 'Q1', sciBase: '工程技术3区', sciUp: '计算机科学2区',
+          sciUpSmall: '计算机科学2区/人工智能3区', sciif: '6.0', jci: '1.01',
+          esi: '工程科学', eii: 'EI', xr: '计算机科学2区', xrSmall: '人工智能3区',
+          ccf: 'A', uibe: 'A', swjtu: 'A++',
+        } },
         customRank: {
           rankInfo: [{
             uuid: 'hzau', abbName: 'HZAU',
@@ -291,18 +392,31 @@ test('EasyScholar keeps only selected custom datasets while preserving standard 
     item(title, '10.1000/selected'), fetcher, 'secret', ['HZAU'], false);
 
   assert.equal(result.jcr, 'JCR-Q1');
-  assert.equal(result.ccf, 'A');
+  assert.equal(result.ccf, '');
+  assert.equal(result.ranks?.sciBase, '工程技术3区');
+  assert.equal(result.ranks?.sciUp, '计算机科学2区');
+  assert.equal(result.ranks?.sciUpSmall, undefined);
+  assert.equal(result.ranks?.sciif, undefined);
+  assert.equal(result.ranks?.jci, undefined);
+  assert.equal(result.ranks?.xr, undefined);
   assert.equal(result.ranks?.HZAU, 'A+');
   assert.equal(result.ranks?.uibe, undefined);
   assert.equal(result.ranks?.swjtu, undefined);
   assert.deepEqual(result.customDatasets?.map(dataset => dataset.key), ['HZAU']);
-  assert.ok(result.datasetCatalog?.some(dataset => dataset.key === 'uibe'));
+  assert.equal(result.datasetCatalog?.find(dataset => dataset.key === 'uibe')?.name, '对外经济贸易大学分级');
+  assert.equal(result.datasetCatalog?.find(dataset => dataset.key === 'sciif')?.name, '影响因子');
 
   const standardOnly = await lookupPublication(
     item(title, '10.1000/selected'), fetcher, 'secret', [], false);
   assert.equal(standardOnly.jcr, 'JCR-Q1');
-  assert.equal(standardOnly.ccf, 'A');
+  assert.equal(standardOnly.ccf, '');
+  assert.equal(standardOnly.ranks?.sciBase, '工程技术3区');
+  assert.equal(standardOnly.ranks?.sciUp, '计算机科学2区');
   assert.equal(standardOnly.ranks?.HZAU, undefined);
   assert.equal(standardOnly.ranks?.uibe, undefined);
   assert.deepEqual(standardOnly.customDatasets, []);
+
+  const withCCF = await lookupPublication(
+    item(title, '10.1000/selected'), fetcher, 'secret', ['HZAU', 'CCF'], false);
+  assert.equal(withCCF.ccf, 'A');
 });

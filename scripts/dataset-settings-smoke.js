@@ -11,6 +11,8 @@ const wait = async (check, message) => {
 };
 const assert = (ok, message) => { if (!ok) throw new Error(message); };
 const plugin = Zotero.PaperLens;
+const readerController = [...plugin.views.values()].find(view => view.controller.source)?.controller;
+assert(readerController, 'A synthetic reader must be open for the settings refresh check');
 const previous = await plugin.storage.getSettings();
 await plugin.storage.saveSettings({
   ...previous,
@@ -36,10 +38,15 @@ try {
   const inputs = [...fieldset.querySelectorAll('input')];
   const keyInput = inputs.find(input => input.value === 'HZAU');
   assert(toggle?.checked === false, 'Show-all dataset toggle has the wrong state');
-  assert(labels.includes('华中农业大学') && labels.includes('UIBE'),
+  assert(labels.includes('华中农业大学') && labels.includes('对外经济贸易大学分级'),
     'Discovered EasyScholar datasets are missing from settings');
   assert(keyInput, 'Selected HZAU dataset is missing from settings');
-  return { passed: ['dataset settings rendered', 'show-all toggle', 'catalog choices', 'selected HZAU value'] };
+  await plugin.storage.rememberEasyScholarDatasets([{ key: 'NEWDB', name: '新发现期刊等级' }]);
+  await readerController.bridge.saveSettings(await readerController.bridge.getSettings());
+  await wait(() => [...fieldset.querySelectorAll('.dataset-choice')]
+    .some(label => label.textContent.trim() === '新发现期刊等级'), 'Newly discovered dataset did not appear live');
+  return { passed: ['dataset settings rendered', 'show-all toggle', 'catalog choices',
+    'selected HZAU value', 'new dataset appeared without reopening settings'] };
 } finally {
   body.remove();
   await plugin.storage.saveSettings(previous);

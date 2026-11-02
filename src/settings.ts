@@ -1,4 +1,5 @@
 import type { AIProvider, Depth, EasyScholarDatasetOption, Settings } from './types';
+import { easyScholarRankName } from './dataset-labels';
 
 export const DEFAULT_PROVIDER: AIProvider = {
   id: 'default',
@@ -59,7 +60,7 @@ function datasetCatalog(value: unknown): EasyScholarDatasetOption[] {
     const normalized = key.toLowerCase();
     if (!key || seen.has(normalized)) continue;
     seen.add(normalized);
-    result.push({ key, name: text(candidate.name).slice(0, 120) || key });
+    result.push({ key, name: easyScholarRankName(key, text(candidate.name).slice(0, 120)) });
   }
   return result;
 }

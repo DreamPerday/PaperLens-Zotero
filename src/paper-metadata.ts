@@ -1,13 +1,13 @@
 import conferenceData from './paper-ranks/ccf.json';
+import { easyScholarRankName } from './dataset-labels';
+export { easyScholarRankName } from './dataset-labels';
 
 const TAG_PREFIX = 'PaperLens/';
 const EASYSCHOLAR_TAG_PREFIX = `${TAG_PREFIX}EasyScholar:`;
 const CCF_VALUES = new Set(['A', 'B', 'C']);
 const CORE_VALUES = new Set(['A*', 'A', 'B', 'C']);
-const EASYSCHOLAR_STANDARD_KEYS = new Set(['sci', 'sciup', 'scibase', 'ccf', 'ssci']);
-const EASYSCHOLAR_DATASET_NAMES: Record<string, string> = {
-  hzau: '华中农业大学',
-};
+const EASYSCHOLAR_CORE_KEYS = new Set(['sci', 'scibase', 'sciup']);
+const EASYSCHOLAR_PRIMARY_KEYS = new Set(['sci', 'ccf']);
 
 interface ConferenceRecord {
   acronym: string;
@@ -236,12 +236,8 @@ export interface EasyScholarDataset {
   matched: string;
 }
 
-export function easyScholarRankName(key: string): string {
-  return EASYSCHOLAR_DATASET_NAMES[key.toLowerCase()] || key;
-}
-
-export function isEasyScholarStandardKey(key: string): boolean {
-  return EASYSCHOLAR_STANDARD_KEYS.has(key.toLowerCase());
+export function isEasyScholarCoreKey(key: string): boolean {
+  return EASYSCHOLAR_CORE_KEYS.has(key.toLowerCase());
 }
 
 export function getEasyScholarRanks(item: any): EasyScholarRank[] {
@@ -265,7 +261,7 @@ export function easyScholarRanksLabel(item: any): string {
 
 export function easyScholarRanksSummary(ranks: Record<string, string> | undefined): string {
   return Object.entries(ranks || {})
-    .filter(([key, value]) => !isEasyScholarStandardKey(key) && String(value || '').trim())
+    .filter(([key, value]) => !EASYSCHOLAR_PRIMARY_KEYS.has(key.toLowerCase()) && String(value || '').trim())
     .map(([key, value]) => `${easyScholarRankName(key)}: ${String(value).trim()}`)
     .join(' · ');
 }
@@ -287,7 +283,7 @@ export async function saveEasyScholarRanks(item: any, ranks: Record<string, stri
   const added: Array<{ tag: string; value: string }> = [];
   for (const [key, raw] of Object.entries(ranks)) {
     const value = String(raw || '').trim();
-    if (!value || isEasyScholarStandardKey(key)) continue;
+    if (!value || EASYSCHOLAR_PRIMARY_KEYS.has(key.toLowerCase())) continue;
     const tag = `${EASYSCHOLAR_TAG_PREFIX}${key}=${value}`;
     tags.push({ tag, type: 1 });
     added.push({ tag, value: key });

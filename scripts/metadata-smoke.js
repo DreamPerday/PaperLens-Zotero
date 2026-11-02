@@ -27,10 +27,14 @@ try {
   }), 'Conference ranks were not saved');
   assert(Zotero.Tags.getColor(parent.libraryID, 'PaperLens/CCF-A')?.color, 'CCF tag has no Zotero color');
   assert(Zotero.Tags.getColor(parent.libraryID, 'PaperLens/CORE-A*')?.color, 'CORE tag has no Zotero color');
-  await metadata.saveEasyScholarRanks(parent, { hzau: 'A', sci: 'Q1', ccf: 'A' });
-  assert(JSON.stringify(metadata.getEasyScholarRanks(parent)) === JSON.stringify([
-    { key: 'hzau', name: '华中农业大学', value: 'A' },
-  ]), 'EasyScholar custom dataset was not saved');
+  await metadata.saveEasyScholarRanks(parent, {
+    hzau: 'A', sci: 'Q1', ccf: 'A', sciBase: '工程技术3区', sciUp: '计算机科学2区',
+    sciUpSmall: '人工智能3区', xr: '计算机科学2区', xrSmall: '人工智能3区',
+    sciif: '6.0', sciif5: '5.9', jci: '1.01', esi: '工程科学', eii: 'EI',
+    scu: '计算机科学C', swufe: 'B', uibe: 'C', swjtu: 'A+', hhu: 'B类', xju: '二区', cug: '工程技术T2',
+  });
+  const easyScholarRanks = metadata.getEasyScholarRanks(parent);
+  assert(easyScholarRanks.length === 18, 'EasyScholar standard ranks and custom dataset were not saved');
   assert(Zotero.Tags.getColor(parent.libraryID, 'PaperLens/EasyScholar:hzau=A')?.color,
     'EasyScholar custom dataset tag has no Zotero color');
 
@@ -52,8 +56,12 @@ try {
     'Information pane shows the wrong quartile');
   assert(conferenceRow().querySelector('.custom-row-value').value === 'CCF-A · CORE-A*',
     'Information pane shows the wrong conference rank');
-  assert(easyScholarRow().querySelector('.custom-row-value').value === '华中农业大学: A',
-    'Information pane shows the wrong EasyScholar dataset');
+  const easyScholarValue = easyScholarRow().querySelector('.custom-row-value').value;
+  for (const label of ['华中农业大学: A', '中科院基础版分区: 工程技术3区',
+    '中科院升级版分区: 计算机科学2区', '新锐分区: 计算机科学2区',
+    '影响因子: 6.0', 'JCI: 1.01', 'ESI学科: 工程科学', 'EI收录: EI', '西南交通大学分级: A+']) {
+    assert(easyScholarValue.includes(label), `Information pane is missing ${label}`);
+  }
   const editCustomRow = async (row, value) => {
     await details.render();
     const input = row().querySelector('.custom-row-value');
@@ -82,7 +90,7 @@ try {
   await wait(() => [...publicationSection().querySelectorAll('span')].some(node => node.textContent === '华中农业大学: A'),
     'Publication section is missing the EasyScholar dataset badge');
   return { passed: ['journal field', 'JCR quartile tag', 'CAS quartile tag', 'CCF/CORE rank tags',
-    'EasyScholar custom dataset tag and name', 'colored tag assignment', 'information pane rendering',
+    'EasyScholar base/upgraded/emerging ranks and common indicators', 'colored tag assignment', 'information pane rendering',
     'publication section and query button', 'information pane editing'] };
 } finally {
   await metadata.saveJournal(parent, oldJournal);
