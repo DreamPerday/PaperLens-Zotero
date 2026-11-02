@@ -1,5 +1,6 @@
 import {
-  easyScholarRankName, isEasyScholarStandardKey, lookupConferenceRank, publicationField, resolvePaperItem,
+  easyScholarRankName, getConferenceRanks, getEasyScholarRanks, getJournal, getJournalRanks,
+  isEasyScholarStandardKey, lookupConferenceRank, publicationField, resolvePaperItem,
   saveConferenceRanks, saveEasyScholarRanks, saveJournal, saveJournalRanks, saveQuartile,
 } from './paper-metadata';
 import type { EasyScholarDataset } from './paper-metadata';
@@ -315,28 +316,57 @@ export async function lookupPublication(item: any, fetcher: Fetcher = fetch,
   return best;
 }
 
-export async function applyPublicationLookup(item: any, result: PublicationLookup): Promise<void> {
+export async function applyPublicationLookup(item: any, result: PublicationLookup,
+  options: { fillMissingOnly?: boolean } = {}): Promise<void> {
   const paper = resolvePaperItem(item);
   if (!paper) throw new Error('请选择论文条目或论文附件。');
+  const fillMissing = options.fillMissingOnly === true;
+  const currentVenue = getJournal(paper);
+  const currentConference = lookupConferenceRank(currentVenue);
+  const foundConference = lookupConferenceRank(result.venue);
+  const sameVenue = !currentVenue || titleKey(currentVenue) === titleKey(result.venue)
+    || Boolean(result.venue && currentConference && foundConference && currentConference.key === foundConference.key);
   const typeName = result.type === 'conference' ? 'conferencePaper'
     : result.type === 'journal' ? 'journalArticle'
       : result.type === 'preprint' ? 'preprint' : '';
   const typeID = typeName ? Zotero.ItemTypes.getID(typeName) : false;
-  if (typeID && paper.itemTypeID !== typeID) paper.setType(typeID);
-  if (result.venue) await saveJournal(paper, result.venue);
-  if (result.doi) {
+  if (typeID && paper.itemTypeID !== typeID && (!fillMissing || !currentVenue)) paper.setType(typeID);
+  if (result.venue && (!fillMissing || !currentVenue)) await saveJournal(paper, result.venue);
+  if (result.doi && (!fillMissing || (sameVenue && !field(paper, 'DOI')))) {
     try { paper.setField('DOI', result.doi); } catch { /* Unsupported optional field. */ }
   }
-  if (result.year && !field(paper, 'date')) {
+  if (result.year && !field(paper, 'date') && (!fillMissing || sameVenue)) {
     try { paper.setField('date', result.year); } catch { /* Unsupported optional field. */ }
   }
-  if (result.type === 'conference') {
+  if (fillMissing) {
+    // A title match can point to another publication version; do not attach its ranks to a different venue.
+    if (sameVenue) {
+      const journal = getJournalRanks(paper);
+      const conference = getConferenceRanks(paper);
+      if (result.jcr || result.cas) await saveJournalRanks(paper, {
+        jcr: journal.jcr || result.jcr || '', cas: journal.cas || result.cas || '',
+      });
+      if (result.ccf || result.core) await saveConferenceRanks(paper, {
+        ccf: conference.ccf || result.ccf, core: conference.core || result.core,
+        conference: conference.conference || result.venue,
+      });
+      if (result.ranks) {
+        const ranks = { ...result.ranks };
+        for (const rank of getEasyScholarRanks(paper)) {
+          const incoming = Object.keys(ranks).find(key => key.toLowerCase() === rank.key.toLowerCase());
+          if (incoming) delete ranks[incoming];
+          ranks[rank.key] = rank.value;
+        }
+        await saveEasyScholarRanks(paper, ranks);
+      }
+    }
+  } else if (result.type === 'conference') {
     await saveQuartile(paper, '');
     await saveConferenceRanks(paper, { ccf: result.ccf, core: result.core, conference: result.venue });
   } else {
     if (result.jcr || result.cas) await saveJournalRanks(paper, { jcr: result.jcr || '', cas: result.cas || '' });
     await saveConferenceRanks(paper, { ccf: '', core: '', conference: '' });
   }
-  if (result.ranks) await saveEasyScholarRanks(paper, result.ranks);
+  if (!fillMissing && result.ranks) await saveEasyScholarRanks(paper, result.ranks);
   await paper.saveTx();
 }

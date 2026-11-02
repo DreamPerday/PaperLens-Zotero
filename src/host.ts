@@ -8,6 +8,8 @@ import {
   unmatchedEasyScholarDatasetsSummary,
 } from './paper-metadata';
 import { applyPublicationLookup, lookupPublication } from './paper-online';
+import { registerPublicationColumns } from './publication-columns';
+import { PublicationImportQueue } from './publication-import';
 import { Storage } from './storage';
 import { TranslationPopups } from './translation/popup';
 import { findReader, openReader } from './zotero-adapter';
@@ -21,6 +23,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   const ai = new AIClient();
   const views = new Map<HTMLElement, { controller: ReaderController; frame: HTMLIFrameElement; unmount?: () => void }>();
   const preferenceFrames = new Map<HTMLIFrameElement, () => void>();
+  const publicationSections = new Map<HTMLElement, { item: any; refresh: () => Promise<void> }>();
   const windows = new Map<any, () => void>();
   const standalone = new Map<any, { panel: HTMLElement; splitter: HTMLElement; entry: ReturnType<typeof mount>; cleanup: () => void }>();
   let paneID: string;
@@ -29,6 +32,24 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   let conferenceRowID: string;
   let easyScholarRowID: string;
   let publicationPaneID: string;
+  let unregisterColumns: (() => void) | undefined;
+  let importObserverID: string | undefined;
+  const imports = new PublicationImportQueue({
+    getItem: id => Zotero.Items.get(id),
+    eligible: item => Boolean(item?.isRegularItem?.() && !item.deleted
+      && Zotero.Libraries.get(item.libraryID)?.editable
+      && ['journalArticle', 'conferencePaper', 'preprint', 'document', 'report', 'manuscript']
+        .includes(Zotero.ItemTypes.getName(item.itemTypeID))),
+    getSettings: () => storage.getSettings(),
+    apply: async (item, result) => {
+      await applyPublicationLookup(item, result, { fillMissingOnly: true });
+      await storage.rememberEasyScholarDatasets(result.datasetCatalog || []);
+      for (const row of [journalRowID, quartileRowID, conferenceRowID, easyScholarRowID]) {
+        if (row) Zotero.ItemPaneManager.refreshInfoRow(row);
+      }
+    },
+    onError: error => Zotero.logError(error),
+  });
   const notify = () => {
     for (const { controller } of views.values()) {
       controller.emit();
@@ -287,6 +308,18 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     paperOnline: { lookupPublication, applyPublicationLookup },
     async start() {
       await storage.init();
+      unregisterColumns = registerPublicationColumns(info.id);
+      importObserverID = Zotero.Notifier.registerObserver({
+        notify(event: string, type: string, ids: Array<number | string>) {
+          if (type === 'item') imports.notify(event, type, ids as number[]);
+          const changed = new Set(ids.map(id => Number(String(id).split('-')[0])));
+          for (const section of publicationSections.values()) {
+            if (changed.has(resolvePaperItem(section.item)?.id)) {
+              void section.refresh().catch(error => Zotero.logError(error));
+            }
+          }
+        },
+      }, ['item', 'item-tag'], 'paperlens-publication-import');
       paneID = Zotero.ItemPaneManager.registerSection({
         paneID: 'paperlens-reading', pluginID: info.id,
         header: { l10nID: 'paperlens-pane-header', icon: 'chrome://paperlens/content/icon.svg' },
@@ -352,9 +385,14 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
         paneID: 'paperlens-publication', pluginID: info.id,
         header: { l10nID: 'paperlens-publication-header', icon: 'chrome://paperlens/content/icon.svg' },
         sidenav: { l10nID: 'paperlens-publication-sidenav', icon: 'chrome://paperlens/content/icon.svg' },
-        onItemChange: ({ item, setEnabled }: any) => { setEnabled(Boolean(resolvePaperItem(item))); },
+        onInit: ({ body, item, refresh }: any) => { publicationSections.set(body, { item, refresh }); },
+        onItemChange: ({ body, item, setEnabled }: any) => {
+          const section = publicationSections.get(body);
+          if (section) section.item = item;
+          setEnabled(Boolean(resolvePaperItem(item)));
+        },
         onRender: ({ body, item }: any) => { void mountPublicationSection(body, item); },
-        onDestroy: ({ body }: any) => { body.replaceChildren(); },
+        onDestroy: ({ body }: any) => { publicationSections.delete(body); body.replaceChildren(); },
       });
       if (!journalRowID || !quartileRowID || !conferenceRowID || !easyScholarRowID || !publicationPaneID) {
         throw new Error('PaperLens 出版信息行注册失败。');
@@ -436,6 +474,10 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       frame.src = sidebarURL; body.replaceChildren(frame); preferenceFrames.set(frame, cleanup);
     },
     async stop() {
+      if (importObserverID) Zotero.Notifier.unregisterObserver(importObserverID);
+      imports.stop();
+      unregisterColumns?.();
+      publicationSections.clear();
       translations.dispose();
       Zotero.Reader.unregisterEventListener('renderTextSelectionPopup', selectionListener);
       Zotero.Reader.unregisterEventListener('renderToolbar', toolbarListener);

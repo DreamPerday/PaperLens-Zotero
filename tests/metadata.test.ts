@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { publicationColumnData } from '../src/publication-columns';
 import {
   conferenceRankLabel, getConferenceRanks, getJournal, getJournalRanks, getQuartile, journalRanksLabel, lookupConferenceRank,
   parseConferenceRank, parseQuartileInput, publicationField, quartileLabel, quartileTag,
@@ -47,6 +48,20 @@ function paper(typeID = 1) {
     values: () => ({ journal, tags, saves }),
   };
 }
+
+test('library columns show publication/year and all rank families from the existing fields/tags', () => {
+  const item = paper();
+  item.getField = name => name === 'date' ? '2026-11-02' : 'Nature';
+  item.setTags([
+    { tag: 'PaperLens/JCR-Q1' }, { tag: 'PaperLens/CAS-2' },
+    { tag: 'PaperLens/CCF-A' }, { tag: 'PaperLens/CORE-A*' },
+    { tag: 'PaperLens/EasyScholar:hzau=A' },
+  ]);
+  assert.equal(publicationColumnData(item, 'publication'), 'Nature');
+  assert.equal(publicationColumnData(item, 'year'), '2026');
+  assert.equal(publicationColumnData(item, 'ranks'), 'JCR Q1 · 中科院 2区 · CCF-A · CORE-A* · 华中农业大学: A');
+  assert.equal(publicationColumnData({ isRegularItem: () => false }, 'ranks'), '');
+});
 
 test('quarterile helpers create namespaced tags and preserve unrelated tags', () => {
   assert.equal(quartileTag('JCR-Q1'), 'PaperLens/JCR-Q1');

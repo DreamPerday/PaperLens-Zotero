@@ -13,7 +13,7 @@ export interface Settings {
   providers: AIProvider[]; activeProviderId: string;
   depth: Depth; hints: boolean; contextChars: number; autoTranslate: boolean;
   wordTranslationProviderId: string; offlineDictionary: boolean; translationKeepOpen: boolean;
-  easyScholarApiKey: string; easyScholarShowAllDatasets: boolean;
+  autoPublicationLookup: boolean; easyScholarApiKey: string; easyScholarShowAllDatasets: boolean;
   easyScholarDatasetKeys: string[]; easyScholarDatasetCatalog: EasyScholarDatasetOption[];
 }
 export interface TranslationState {

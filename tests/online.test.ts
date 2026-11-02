@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyPublicationLookup, easyScholarLookup, lookupPublication } from '../src/paper-online';
-import { getEasyScholarRanks, saveEasyScholarRanks } from '../src/paper-metadata';
+import { getConferenceRanks, getEasyScholarRanks, getJournalRanks, saveEasyScholarRanks } from '../src/paper-metadata';
 
 (globalThis as any).Zotero = {
   Items: { get: () => undefined },
@@ -96,6 +96,41 @@ test('confirmed online metadata updates item type, venue and colored rank tags',
   assert.ok(tags.some(entry => entry.tag === 'PaperLens/CCF-A'));
   assert.ok(tags.some(entry => entry.tag === 'PaperLens/CORE-A*'));
   assert.ok(saves >= 1);
+});
+
+test('automatic fill preserves existing fields/ranks and only adds missing metadata', async () => {
+  const values: Record<string, string> = { publicationTitle: 'Test Journal', DOI: '10.1000/manual', date: '2020-01-02' };
+  let tags = [ { tag: 'keep' }, { tag: 'PaperLens/JCR-Q2' }, { tag: 'PaperLens/CCF-B' },
+    { tag: 'PaperLens/EasyScholar:HZAU=B' } ];
+  const target = {
+    itemTypeID: 1, isRegularItem: () => true,
+    getField: (name: string) => values[name] || '',
+    setField: (name: string, value: string) => { values[name] = value; },
+    setType: () => assert.fail('Should preserve existing publication type'),
+    getTags: () => tags,
+    setTags: (value: typeof tags) => { tags = value; },
+    saveTx: async () => {},
+  };
+  const result = {
+    title: 'Test paper', type: 'journal' as const, venue: 'Test Journal', year: '2026',
+    doi: '10.1000/new', source: 'test', ccf: 'A', core: 'A*', jcr: 'JCR-Q1', cas: 'CAS-2',
+    ranks: { hzau: 'A', uibe: 'A+' },
+  };
+  await applyPublicationLookup(target, result, { fillMissingOnly: true });
+  assert.equal(values.DOI, '10.1000/manual');
+  assert.equal(values.date, '2020-01-02');
+  assert.equal(values.publicationTitle, 'Test Journal');
+  assert.deepEqual(getJournalRanks(target), { jcr: 'JCR-Q2', cas: 'CAS-2' });
+  assert.equal(getConferenceRanks(target).ccf, 'B');
+  assert.equal(getConferenceRanks(target).core, 'A*');
+  assert.deepEqual(getEasyScholarRanks(target).map(rank => [rank.key, rank.value]), [['uibe', 'A+'], ['HZAU', 'B']]);
+  assert.ok(tags.some(tag => tag.tag === 'keep'));
+
+  values.publicationTitle = 'Manually selected other journal';
+  const savedTags = [...tags];
+  await applyPublicationLookup(target, { ...result, cas: 'CAS-1' }, { fillMissingOnly: true });
+  assert.equal(values.publicationTitle, 'Manually selected other journal');
+  assert.deepEqual(tags, savedTags, 'Ranks must not be mixed between publication versions');
 });
 
 test('EasyScholar adds JCR and CAS ranks after metadata lookup', async () => {

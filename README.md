@@ -2,11 +2,11 @@
 
 帮助读懂和核对论文的 AI 阅读助手。直接使用 Zotero 的 PDF 阅读器，在常驻侧栏里提问、精读、生成概览和核对论文依据。
 
-当前版本为 **0.3.8**，在选文自动翻译基础上新增多服务商、内置离线词典、单词本地路由、失败内容替换、期刊分区信息、在线出版信息查询和 EasyScholar 自定义数据集；可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载正式安装包。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前源码版本为 **0.3.9**，新增首次导入自动补全出版信息、空结果重试一次及文献列表出版物/年份/综合等级列，同时保留多服务商、离线词典、选文翻译和 EasyScholar 自定义数据集。正式安装包以 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 已发布版本为准，未发布的本地版本可自行构建。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.6 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
 
 ## 安装与开始阅读
 
-1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载 `paperlens-zotero-0.3.8.xpi`。从源码构建时，文件位于 `dist/`。
+1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载对应版本的 XPI。从当前源码构建时，文件为 `dist/paperlens-zotero-0.3.9.xpi`。
 2. 打开 Zotero → **工具 → 插件**，点击齿轮 → **从文件安装插件**，选择此 XPI。
 3. 打开一份本机 PDF，点击阅读器工具栏的 **PaperLens**，或右侧 PaperLens 图标。
 4. 在侧栏的 **设置** 中添加服务商，并填写各自的 **显示名称、Base URL、API Key、模型 ID**。可以保存多个服务商；从 Zotero 设置左侧的 **PaperLens** 也可以进入。
@@ -33,6 +33,12 @@
 第三条 **会议等级（CCF / CORE）** 只用于会议论文。分区和会议等级写入条目标签，例如 `PaperLens/JCR-Q1`、`PaperLens/CAS-2`、`PaperLens/CCF-A`、`PaperLens/CORE-A*`，可以在 Zotero 标签区筛选和同步。编辑时可输入 `Q1`、`中科院 1区`、`CCF-A` 或 `CORE-A*`，留空可清除。标签名称保持纯文字，不添加图案前缀；插件会直接设置 Zotero 标签颜色。
 
 条目侧栏新增 **出版信息** 小节，提供醒目的 **在线查询出版信息** 按钮；也可以在论文条目上右键选择 **PaperLens：在线查询出版信息**。插件会通过 DOI/标题匹配 OpenAlex、Crossref 和 arXiv，先显示论文类型、出版来源、年份和 CCF/CORE 等级，确认后写入条目。EfficientNet 会识别为 ICML 2019、CCF-A、CORE-A*。
+
+文献库主列表也会显示 **期刊 / 出版物、年份、分区 / 会议 / 自定义等级** 三列，直接复用条目标准字段和 PaperLens 标签。JCR、中科院、CCF、CORE 和 EasyScholar 自定义等级在同一列以彩色徽标显示；可以点击列头排序、拖动调整宽度，在列头右键菜单中选择显示或隐藏。内容被截断时悬停可查看完整文本。
+
+**首次导入自动补全默认开启**：导入新的论文条目，或 Zotero 为独立 PDF 识别并创建父条目后，等待元数据稳定约 2 秒，自动查询出版来源、年份和可用等级并填写。批量导入按顺序查询，重复的导入通知不会重复请求。如果第一次没有匹配、出版信息不全或 EasyScholar 返回空等级/暂时出错，会再等 2 秒重试一次；第二次仍为空时保留已获得的有效信息，不编造等级。未获得任何匹配时保留原条目，之后可使用手动查询按钮。
+
+自动补全只添加缺失信息，保留已有出版物、DOI、日期和手动等级。在线匹配指向其他出版版本时，不把该版本等级混入原出版物。插件启动时不会扫描旧文献；编辑已有条目不会触发自动查询。可以在 PaperLens 设置中关闭 **首次导入论文后自动补全出版信息与等级**，无需先配置 AI 模型即可保存此选项。独立 PDF 需要 Zotero 先识别出带标题的论文条目；插件不负责 OCR。
 
 在设置中填写 EasyScholar 开放接口密钥后，插件还会调用 EasyScholar `getPublicationRank` 接口，读取 `sci`、`sciUp`、`sciBase`、`ccf` 和自定义数据集字段，自动填写 JCR、中科院分区和 CCF。密钥在 EasyScholar 官网登录后从 **开放接口** 页面获取，并保存在本机 Zotero 凭据库。
 
@@ -75,7 +81,7 @@ EasyScholar 设置中可以关闭“显示接口返回的全部数据集”，�
 - 离线词典随 XPI 本地提供，词条查询不会上传选中的单词。
 - 原文索引及阅读记录存放在 **Zotero 数据目录下的 `paperlens/`**，按 `libraryID_attachmentKey` 区分附件，使用 JSON 保存。
 - 论文问答、精读等主动操作会向用户配置的服务发送相关原文及近期对话；开启自动翻译时，选中 PDF 文字会将选文发送到同一服务。模型发现和连接测试同样会访问配置的服务。
-- 主动使用在线出版查询时，会将论文标题或 DOI 发送到 OpenAlex、Crossref 或 arXiv；CCF/CORE 匹配使用插件内置的 CCFDDL 精简榜单，不额外上传论文内容。
+- 使用手动在线出版查询或开启首次导入自动补全时，会将论文标题或 DOI 发送到 OpenAlex、Crossref 或 arXiv；CCF/CORE 匹配使用插件内置的 CCFDDL 精简榜单，不额外上传论文内容。自动查询仅针对插件启用后新导入的论文，可在设置中关闭。
 - 配置 EasyScholar 密钥后，查询还会将论文的期刊或会议名称发送给 EasyScholar 开放接口，以获取等级数据。
 - 阅读历史只在本机保存。主动保存的 Zotero 笔记遵循用户的 Zotero 同步设置；卸载插件会保留本机阅读记录和笔记。
 - 插件没有账号、租户体系、遥测或后台资料库批量上传。
@@ -101,7 +107,7 @@ npm test
 npm run build
 ```
 
-构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.8.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
+构建只打包 `addon/` 与编译后的运行资源，产物在 `dist/paperlens-zotero-0.3.9.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
 
 | 文件 | 负责的能力 |
 | --- | --- |
@@ -115,6 +121,8 @@ npm run build
 | `src/history.ts` | 新请求替换同任务失败或中断的旧回答 |
 | `src/paper-metadata.ts` | 期刊标准字段、JCR/中科院分区标签 |
 | `src/paper-online.ts` | OpenAlex、Crossref、arXiv 出版信息查询与确认写入 |
+| `src/publication-columns.ts` | 文献库出版物、年份和等级列及彩色徽标 |
+| `src/publication-import.ts` | 新导入论文的自动补全、去重队列与一次重试 |
 | `src/paper-ranks/ccf.json` | 由 CCFDDL 生成的 CCF/CORE 会议等级索引 |
 | `src/translation/` | 选文翻译请求、浮窗定位、拖动与生命周期 |
 | `src/translation/dictionary.json` | 由 ECDICT 生成的精简离线英汉词库 |

@@ -140,6 +140,9 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
         </option>)}
       </select></label>
       <p className="field-help">仅当选区是单个英文单词时使用，句子和段落仍走当前服务商。选择本机 Ollama/LM Studio 等 OpenAI 兼容服务可避免远程 Token 消耗。</p>
+      <label className="check"><input type="checkbox" checked={settings.autoPublicationLookup !== false}
+        onChange={e => update('autoPublicationLookup', e.target.checked)}/>首次导入论文后自动补全出版信息与等级</label>
+      <p className="field-help">默认开启。导入后用标题或 DOI 查询 OpenAlex、Crossref、arXiv；配置下方密钥后也会查询 EasyScholar。空结果或暂时失败会在 2 秒后重试一次，只补缺失信息，保留已填写内容。仅查询新导入条目，不扫描已有文献库。</p>
       <label>EasyScholar 开放接口密钥<div className="input-row">
         <input value={settings.easyScholarApiKey} type={showKey ? 'text' : 'password'} autoComplete="off" spellCheck={false}
           placeholder="用于在线查询 JCR、中科院、CCF 等等级" onChange={e => update('easyScholarApiKey', e.target.value)}/>
@@ -168,7 +171,7 @@ function SettingsPanel({ bridge, onBack }: { bridge: Bridge; onBack?: () => void
       </fieldset>
       <details><summary>高级设置</summary><label>单次原文上下文预算（字符）<input type="number" min="4000" max="160000" step="4000" value={settings.contextChars} onChange={e => update('contextChars', Number(e.target.value))}/></label><p className="field-help">长文概览会分段处理全文。预算应与模型实际上下文容量匹配。</p></details>
       <p className="privacy">AI 服务商和 EasyScholar 的密钥分别保存在本机凭据存储。句子翻译、提问和分析使用当前服务商；单个英文单词可按上方设置发送给专用本地服务。</p>
-      <div className="actions"><button className="primary" disabled={Boolean(busy) || !activeProvider?.baseURL.trim() || !activeProvider?.model.trim()} onClick={() => act('save', async () => {
+      <div className="actions"><button className="primary" disabled={Boolean(busy)} onClick={() => act('save', async () => {
         if (!Number.isFinite(settings.contextChars) || settings.contextChars < 4000 || settings.contextChars > 160000) throw new Error('上下文预算请设为 4000–160000 字符。');
         const wordProvider = settings.providers.find(provider => provider.id === settings.wordTranslationProviderId);
         if (settings.wordTranslationProviderId && (!wordProvider?.baseURL.trim() || !wordProvider?.model.trim())) {

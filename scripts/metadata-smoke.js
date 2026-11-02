@@ -79,7 +79,7 @@ try {
   await publicationSection().render();
   await wait(() => publicationSection().querySelector('button')?.textContent.includes('在线查询'),
     'Online publication query button is missing');
-  assert([...publicationSection().querySelectorAll('span')].some(node => node.textContent === '华中农业大学: A'),
+  await wait(() => [...publicationSection().querySelectorAll('span')].some(node => node.textContent === '华中农业大学: A'),
     'Publication section is missing the EasyScholar dataset badge');
   return { passed: ['journal field', 'JCR quartile tag', 'CAS quartile tag', 'CCF/CORE rank tags',
     'EasyScholar custom dataset tag and name', 'colored tag assignment', 'information pane rendering',

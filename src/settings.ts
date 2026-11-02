@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wordTranslationProviderId: '',
   offlineDictionary: true,
   translationKeepOpen: true,
+  autoPublicationLookup: true,
   easyScholarApiKey: '',
   easyScholarShowAllDatasets: true,
   easyScholarDatasetKeys: [],
@@ -139,6 +140,8 @@ export function normalizeSettings(value: unknown): Settings {
       ? raw.translationKeepOpen
       : DEFAULT_SETTINGS.translationKeepOpen,
     easyScholarApiKey: text(raw.easyScholarApiKey),
+    autoPublicationLookup: typeof raw.autoPublicationLookup === 'boolean'
+      ? raw.autoPublicationLookup : DEFAULT_SETTINGS.autoPublicationLookup,
     easyScholarShowAllDatasets: typeof raw.easyScholarShowAllDatasets === 'boolean'
       ? raw.easyScholarShowAllDatasets
       : DEFAULT_SETTINGS.easyScholarShowAllDatasets,
