@@ -1,6 +1,7 @@
 import { AIClient } from './ai/client';
 import { discardIncompleteAnswers } from './history';
-import { ANNOTATION_FORMAT, buildMessages, chunkBlocks, groupSummaries, sourceText, SYSTEM } from './reading/context';
+import { ANNOTATION_FORMAT, buildMessages, chunkBlocks, groupSummaries, OVERVIEW_MERGE, OVERVIEW_SEGMENT,
+  overviewCoverage, overviewEvidence, overviewSynthesisMessages, sourceText, SYSTEM } from './reading/context';
 import { locateBlock } from './reading/position';
 import { activeProvider, DEFAULT_SETTINGS } from './settings';
 import { Storage } from './storage';
@@ -256,15 +257,16 @@ export class ReaderController {
         const summaries: string[] = [];
         const segmentInstruction = fullTextAnnotation
           ? '按原文顺序逐段注解以下论文片段。对每个有文字的段落标出来源编号，并说明：段落主旨、关键术语或公式、在论证中的作用、与相邻段落的关系。不要把没有给出的内容补进来。' + ANNOTATION_FORMAT
-          : '提取以下论文片段的研究问题、方法、结果、贡献、局限，保留 #source-b编号 引用。不要当作整篇论文。';
+          : OVERVIEW_SEGMENT;
         for (let i = 0; i < chunks.length; i++) {
           if (abort.signal.aborted) throw new Error('已停止');
           response.range = `部分完成 · ${i}/${chunks.length} 部分`;
           progress(`正在分析第 ${i + 1}/${chunks.length} 部分；已完成 ${i} 部分`);
           let summary = '';
           await this.ai.stream(provider, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
-            `${segmentInstruction} 控制在 ${fullTextAnnotation ? 2200 : 1200} 字内。\n${sourceText(chunks[i])}` }], chunk => { summary += chunk; }, abort.signal);
-          summaries.push(summary);
+            `全文第 ${i + 1}/${chunks.length} 部分。${segmentInstruction} 控制在 ${fullTextAnnotation ? 2200 : 2000} 字内。\n${sourceText(chunks[i])}` }], chunk => { summary += chunk; }, abort.signal);
+          const pageLabels = [...new Set(chunks[i].map(block => block.pageLabel))];
+          summaries.push(fullTextAnnotation ? summary : `【原文第 ${i + 1}/${chunks.length} 部分 · 第${pageLabels.join('、')}页】\n${summary}`);
           response.content = summaries.map((s, index) => `### ${fullTextAnnotation ? '全文注解分段' : '原文分段'} ${index + 1}\n${s}`).join('\n\n');
           response.range = `部分完成 · ${i + 1}/${chunks.length} 部分`;
           this.emit(); await this.storage.saveSession(session);
@@ -276,22 +278,23 @@ export class ReaderController {
           if (fullTextAnnotation) {
             response.range = `全文注解 · ${source.pageCount} 页 · ${chunks.length} 部分`;
           } else {
-          let groups = groupSummaries(summaries, settings.contextChars);
-          for (let round = 0; groups.length > 1; round++) {
-            if (round === 4) throw new Error('分段摘要超出上下文预算，已保留各段解读。请提高预算后重试。');
-            const reduced: string[] = [];
-            for (let i = 0; i < groups.length; i++) {
-              progress(`正在合并摘要 · 第 ${round + 1} 轮 · ${i + 1}/${groups.length}`);
-              let result = '';
-              await this.ai.stream(provider, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
-                `合并以下片段摘要，保留研究问题、方法、结果、限制和来源编号，控制在 ${Math.min(1200, Math.floor(settings.contextChars / 4))} 字内。\n${groups[i]}` }], chunk => { result += chunk; }, abort.signal);
-              reduced.push(result);
+            const evidence = overviewEvidence(source, Math.floor(settings.contextChars / 4));
+            const summaryBudget = settings.contextChars - sourceText(evidence).length;
+            let groups = groupSummaries(summaries, summaryBudget);
+            for (let round = 0; groups.length > 1; round++) {
+              if (round === 4) throw new Error('分段摘要超出上下文预算，已保留各段解读。请提高预算后重试。');
+              const reduced: string[] = [];
+              for (let i = 0; i < groups.length; i++) {
+                progress(`正在合并摘要 · 第 ${round + 1} 轮 · ${i + 1}/${groups.length}`);
+                let result = '';
+                await this.ai.stream(provider, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
+                  `${OVERVIEW_MERGE}\n${overviewCoverage(source)}\n合并以下片段笔记，保留摘要主张、方法、实验与表格数值、结论、限制和来源编号，控制在 ${Math.min(2000, Math.floor(settings.contextChars / 4))} 字内。\n${groups[i]}` }], chunk => { result += chunk; }, abort.signal);
+                reduced.push(result);
+              }
+              groups = groupSummaries(reduced, summaryBudget);
             }
-            groups = groupSummaries(reduced, settings.contextChars);
-          }
-          await this.ai.stream(provider, [{ role: 'system', content: SYSTEM }, { role: 'user', content:
-            `${text}\n解释深度：${settings.depth}。下文为按顺序分析全文所得的摘要，请合并去重，并保留有效来源编号：\n${groups[0]}` }],
-          chunk => { final += chunk; response.content = final; this.emit(); }, abort.signal);
+            await this.ai.stream(provider, overviewSynthesisMessages(source, text, groups[0], settings.depth, evidence),
+              chunk => { final += chunk; response.content = final; this.emit(); }, abort.signal);
           }
         } catch (error) { response.content = partial; throw error; }
         if (!fullTextAnnotation) response.range = `全文 · ${source.pageCount} 页 · ${chunks.length} 部分`;

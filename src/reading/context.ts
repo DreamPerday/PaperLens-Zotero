@@ -6,10 +6,13 @@ const depths: Record<Depth, string> = {
   deep: '展开方法假设、变量、推导、论证关系和证据边界。',
 };
 export const ANNOTATION_FORMAT = '每段注解以独立的三级标题开头，格式为 ### [第3页 · b12](#source-b12)，页码和编号使用实际提供的原文块。标题下解释该段，关联段落的引用放在说明正文中，避免将相关段落与本段混为一体。';
+export const OVERVIEW_FORMAT = '给出结构化概览：研究问题、方法（设计/数据/步骤）、主要结果、贡献、局限、进一步阅读的关键段落。综合摘要、正文方法、实验与结果、表格文字和结论，区分作者概括与实验直接支持的发现。保留关键指标、数值、比较对象和实验条件，每个方法或结果要点附原文依据。参考文献表只用于识别引用，不作为本文的方法或实验结果。';
+export const OVERVIEW_SEGMENT = '提取以下论文片段中的摘要主张、研究问题、方法、实验设置、结果（包括表格文字中的指标、数值、比较对象与条件）、贡献、局限和结论，保留 #source-b编号 引用。仅列出本片段出现的信息，不写整篇论文的覆盖范围声明；某个片段没有摘要或结论，不代表全文没有读取这些部分。参考文献列表不提供本文实验事实，只有文献条目时简记“参考文献列表”。';
+export const OVERVIEW_MERGE = '以下材料来自同一篇论文的分段阅读笔记。跨片段合并证据，并保留摘要、实验设置、表格结果、结论及其来源编号。各片段的“未提供”仅描述局部，不得据此声称全文未覆盖摘要、实验或结论。覆盖范围以程序提供的原文读取记录为准；未识别章节标题不等于未读取该部分。';
 const tasks: Record<Task, string> = {
   chat: '直接回答用户的问题，按需解释。用户没有选中文本时，直接围绕当前论文提供的相关原文回答，不提示用户必须先选文。',
   close: '如果有选文，逐句注释：原意、关键术语或公式、论证作用、与前后或相关段落的关系；如果没有选文，按原文顺序生成全文段落级注解。关联可标为前提、解释、转折、证据或局限，均提供来源。只解释实际提供的公式。' + ANNOTATION_FORMAT,
-  overview: '给出结构化概览：研究问题、方法（设计/数据/步骤）、主要结果、贡献、局限、进一步阅读的关键段落。每个方法或结果要点附原文依据。',
+  overview: OVERVIEW_FORMAT,
   verify: '核对用户主张或选文中的主张。先明确给出“支持 / 部分支持 / 当前依据不足”之一，再列出支持证据、反向证据或限制、适用条件和待核对点。这里核对的是主张与本文证据的关系，不是泛泛评价论文好坏；依据不足不等于主张错误。',
 };
 export const SYSTEM = `你是 PaperLens 论文阅读助手，帮助读懂和核对论文。默认用中文，遵从用户的语言要求。
@@ -67,11 +70,70 @@ export function sourceText(blocks: Block[]) {
   return blocks.map(b => `[${b.id} | 第${b.pageLabel}页 | ${b.section}${b.excerpt ? ' | 段落节选' : ''}]\n${b.text}`).join('\n\n');
 }
 
+export function overviewCoverage(source: Source): string {
+  const pages = new Set(source.blocks.flatMap(block =>
+    [block.location, ...(block.locations || [])].map(location => location.pageIndex)));
+  const sections: Array<[string, RegExp]> = [
+    ['摘要', /abstract|摘要/i],
+    ['实验与结果', /experiment|evaluat|results?|实验|结果|评估|测评/i],
+    ['结论', /conclu|结论|总结/i],
+  ];
+  const found = sections.map(([name, pattern]) => {
+    const blocks = source.blocks.filter(block => pattern.test(block.section) ||
+      (/heading|title/.test(block.kind) && pattern.test(block.text)) ||
+      (name === '摘要' && /^\s*(?:abstract\b|摘要)/i.test(block.text)));
+    const labels = [...new Set(blocks.map(block => block.pageLabel))];
+    return `${name}：${labels.length ? `已读取相关文字（第${labels.join('、')}页）` : '未识别明确标题，不能据此断言内容缺失'}`;
+  });
+  const tables = source.blocks.filter(block => /table/i.test(block.kind) || /^\s*(?:table\s*\d|表\s*\d)/i.test(block.text));
+  return `原文读取记录：已读取并处理提取到的全部 ${source.blocks.length} 段，文字覆盖 ${pages.size}/${source.pageCount} 页。\n` +
+    found.join('；') + `；表格：${tables.length ? `已读取 ${tables.length} 个表格或表题文字块` : '未识别独立表格块，表格文字也可能位于普通段落中'}。\n` +
+    '这里只能核对提取到的文字、表格文字和图注；图片细节、未提取出的单元格或无文字层内容不在可见范围内。';
+}
+
+export function overviewEvidence(source: Source, budget: number): Block[] {
+  const body = source.blocks.filter(block => !/heading|title/.test(block.kind));
+  const categories = [
+    body.filter(block => /abstract|摘要/i.test(block.section) || /^\s*(?:abstract\b|摘要)/i.test(block.text)),
+    body.filter(block => /table/i.test(block.kind) || /^\s*(?:table\s*\d|表\s*\d)/i.test(block.text)),
+    body.filter(block => /conclu|结论|总结/i.test(block.section)),
+    body.filter(block => /experiment|evaluat|results?|实验|结果|评估|测评/i.test(block.section)),
+  ].filter(blocks => blocks.length);
+  const selected = categories.flatMap(blocks => {
+    const chosen: Block[] = [];
+    let remaining = Math.floor(budget / categories.length);
+    for (const block of blocks) {
+      const overhead = sourceText([{ ...block, text: '', excerpt: true }]).length + 2;
+      const available = remaining - overhead;
+      if (available <= 0) break;
+      const part = block.text.length > available ? { ...block, text: block.text.slice(0, available), excerpt: true } : block;
+      chosen.push(part);
+      remaining -= sourceText([part]).length + 2;
+    }
+    return chosen;
+  });
+  const byID = new Map<string, Block>();
+  for (const block of selected) {
+    if (!byID.has(block.id) || byID.get(block.id)!.text.length < block.text.length) byID.set(block.id, block);
+  }
+  return source.blocks.flatMap(block => byID.has(block.id) ? [byID.get(block.id)!] : []);
+}
+
+export function overviewSynthesisMessages(source: Source, question: string, summaries: string, depth: Depth,
+  evidence: Block[] = []): ChatMessage[] {
+  return [
+    { role: 'system', content: `${SYSTEM}\n${depths[depth]}\n${OVERVIEW_FORMAT}\n${OVERVIEW_MERGE}\n论文：${source.title}\n${overviewCoverage(source)}` },
+    { role: 'user', content: `${question}\n\n以下为全文所有部分的阅读笔记，请合并去重，保留有效来源编号：\n${summaries}` +
+      (evidence.length ? `\n\n关键原文复核（以下为节选，不代表全文读取范围；与笔记不一致时以原文为准）：\n${sourceText(evidence)}` : '') },
+  ];
+}
+
 export function buildMessages(source: Source, history: Message[], question: string, quote: Quote | undefined,
   task: Task, depth: Depth, budget: number): { messages: ChatMessage[]; blocks: Block[]; range: string } {
   const context = selectContext(source.blocks, question, quote, history, budget);
   const range = context.complete ? `全文 · ${source.pageCount} 页` : `相关节选 · ${context.blocks.length}/${source.blocks.length} 段`;
-  const messages: ChatMessage[] = [{ role: 'system', content: `${SYSTEM}\n${depths[depth]}\n${tasks[task]}\n论文：${source.title}\n本次范围：${range}\n\n${sourceText(context.blocks)}` }];
+  const coverage = task === 'overview' && context.complete ? `\n${overviewCoverage(source)}` : '';
+  const messages: ChatMessage[] = [{ role: 'system', content: `${SYSTEM}\n${depths[depth]}\n${tasks[task]}\n论文：${source.title}\n本次范围：${range}${coverage}\n\n${sourceText(context.blocks)}` }];
   let used = 0;
   const recent: ChatMessage[] = [];
   for (const message of [...history].reverse()) {

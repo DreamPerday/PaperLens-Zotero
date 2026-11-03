@@ -382,7 +382,8 @@ export async function applyPublicationLookup(item: any, result: PublicationLooku
     await saveConferenceRanks(paper, { ccf: result.ccf, core: result.core, conference: result.venue });
   } else {
     if (result.jcr || result.cas) await saveJournalRanks(paper, { jcr: result.jcr || '', cas: result.cas || '' });
-    await saveConferenceRanks(paper, { ccf: '', core: '', conference: '' });
+    // CCF also grades journals. Preserve that result independently of publication type.
+    await saveConferenceRanks(paper, { ccf: result.ccf, core: '', conference: '' });
   }
   if (!fillMissing && result.ranks) await saveEasyScholarRanks(paper, result.ranks);
   await paper.saveTx();

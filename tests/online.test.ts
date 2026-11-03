@@ -419,4 +419,21 @@ test('EasyScholar filters non-core ranks to selected datasets and always keeps J
   const withCCF = await lookupPublication(
     item(title, '10.1000/selected'), fetcher, 'secret', ['HZAU', 'CCF'], false);
   assert.equal(withCCF.ccf, 'A');
+
+  const values: Record<string, string> = { title, publicationTitle: withCCF.venue };
+  let tags: Array<{ tag: string; type?: number }> = [];
+  const target = {
+    itemTypeID: 1, isRegularItem: () => true,
+    getField: (name: string) => values[name] || '',
+    setField: (name: string, value: string) => { values[name] = value; },
+    getTags: () => tags, setTags: (next: typeof tags) => { tags = next; },
+    saveTx: async () => {},
+  };
+  await applyPublicationLookup(target, withCCF);
+  assert.equal(getConferenceRanks(target).ccf, 'A', 'Journal CCF rank survives manual confirmation');
+  assert.match(publicationColumnData(target, 'ranks'), /CCF-A/);
+  assert.deepEqual(getJournalRanks(target), { jcr: 'JCR-Q1', cas: 'CAS-2' });
+  await applyPublicationLookup(target, result);
+  assert.equal(getConferenceRanks(target).ccf, '', 'Requery after deselecting CCF removes the old badge');
+  assert.doesNotMatch(publicationColumnData(target, 'ranks'), /CCF-/);
 });

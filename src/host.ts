@@ -67,7 +67,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     if (!paper) { body.replaceChildren(); return; }
     const doc = body.ownerDocument;
     (doc as any).l10n?.addResourceIds(['paperlens.ftl']);
-    let labels = ['在线查询出版信息', '期刊 / 出版物', 'JCR / 中科院分区', '会议等级（CCF / CORE）', '未设置', '查询中…', '保存失败', 'EasyScholar 等级与数据集'];
+    let labels = ['在线查询出版信息', '期刊 / 出版物', 'JCR / 中科院分区', 'CCF / CORE 等级', '未设置', '查询中…', '保存失败', 'EasyScholar 等级与数据集'];
     try {
       labels = await (doc as any).l10n.formatValues([
         { id: 'paperlens-publication-query' }, { id: 'paperlens-journal-label' },
@@ -177,7 +177,6 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     ].join('\n');
     if (!Services.prompt.confirm(win, 'PaperLens 在线查询结果', summary)) return false;
     await applyPublicationLookup(paper, result);
-    await win.ZoteroPane.selectItem(paper.id);
     Zotero.ItemPaneManager.refreshInfoRow(journalRowID);
     Zotero.ItemPaneManager.refreshInfoRow(quartileRowID);
     Zotero.ItemPaneManager.refreshInfoRow(conferenceRowID);
