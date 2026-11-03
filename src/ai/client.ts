@@ -68,7 +68,10 @@ export class AIClient {
   async stream(settings: AIConnection, messages: ChatMessage[], onText: (text: string) => void, signal?: AbortSignal) {
     if (!settings.model.trim()) throw new Error('请先在设置中选择模型。');
     const response = await this.request(settings, 'chat/completions', {
-      model: settings.model.trim(), messages, stream: true,
+      model: settings.model.trim(), stream: true,
+      messages: messages.map(({ role, content, images }) => ({ role, content: images?.length && role === 'user'
+        ? [{ type: 'text', text: content }, ...images.map(image => ({ type: 'image_url', image_url: { url: image.dataURL } }))]
+        : content })),
     }, signal);
     if (response.headers.get('content-type')?.includes('application/json')) {
       const json = await response.json();

@@ -12,6 +12,7 @@ import { registerPublicationColumns } from './publication-columns';
 import { PublicationImportQueue } from './publication-import';
 import { Storage } from './storage';
 import { TranslationPopups } from './translation/popup';
+import { registerCaptureShortcut } from './reading/capture-shortcut';
 import { findReader, openReader } from './zotero-adapter';
 import type { Bridge, Quote } from './types';
 
@@ -25,6 +26,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   const preferenceFrames = new Map<HTMLIFrameElement, { controller: ReaderController; cleanup: () => void }>();
   const publicationSections = new Map<HTMLElement, { item: any; refresh: () => Promise<void> }>();
   const windows = new Map<any, () => void>();
+  const captureWindows = new Map<any, () => void>();
   const standalone = new Map<any, { panel: HTMLElement; splitter: HTMLElement; entry: ReturnType<typeof mount>; cleanup: () => void }>();
   let paneID: string;
   let journalRowID: string;
@@ -273,6 +275,38 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
     entry?.frame.contentDocument?.querySelector<HTMLTextAreaElement>('textarea[data-question]')?.focus();
   }
 
+  function registerWindowCapture(win: any) {
+    if (!win || captureWindows.has(win)) return;
+    const currentReader = () => win.Zotero_Tabs
+      ? Zotero.Reader.getByTabID(win.Zotero_Tabs.selectedID)
+      : Zotero.Reader._readers.find((reader: any) => reader._window === win || reader._iframe?.ownerDocument === win.document);
+    const unregister = registerCaptureShortcut(win.document, {
+      enabled: () => currentReader()?.type === 'pdf',
+      capture: async () => {
+        const reader = currentReader();
+        await show(reader);
+        const entry = [...views.values()].find(view => view.controller.reader === reader);
+        if (!entry) throw new Error('请等待 PaperLens 阅读区加载完成后再截图。');
+        try {
+          await entry.controller.load(Zotero.Items.get(reader.itemID), reader);
+          await entry.controller.captureImage();
+        }
+        catch (error) {
+          entry.controller.state.error = error instanceof Error ? error.message : String(error);
+          entry.controller.emit(); throw error;
+        } finally {
+          entry.frame.contentDocument?.querySelector<HTMLTextAreaElement>('textarea[data-question]')?.focus();
+        }
+      },
+      onError: error => Zotero.logError(error),
+    });
+    const cleanup = () => {
+      unregister(); win.removeEventListener('unload', cleanup); captureWindows.delete(win);
+    };
+    win.addEventListener('unload', cleanup, { once: true });
+    captureWindows.set(win, cleanup);
+  }
+
   const selectionListener = (event: any) => {
     const { reader, doc, params, append } = event;
     if (reader.type !== 'pdf' || !params.annotation?.text) return;
@@ -296,11 +330,40 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
   };
   const toolbarListener = ({ reader, doc, append }: any) => {
     if (reader.type !== 'pdf') return;
+    registerWindowCapture(reader._iframe?.ownerDocument.defaultView || reader._window);
     const button = doc.createElement('button'); button.type = 'button'; button.textContent = 'PaperLens';
     button.setAttribute('title', '打开 PaperLens 阅读助手');
     button.style.cssText = 'padding:4px 8px;margin-inline:4px;color:inherit;background:transparent;border:1px solid #7b93b4;border-radius:4px;cursor:pointer;';
     button.addEventListener('click', () => void show(reader).catch(e => Zotero.logError(e)));
     append(button);
+  };
+
+  async function showImage(reader: any, annotation: any) {
+    try {
+      await show(reader);
+      const entry = [...views.values()].find(view => view.controller.reader === reader);
+      if (!entry) return;
+      await entry.controller.selectImage(JSON.parse(JSON.stringify(annotation.position)), reader, String(annotation.pageLabel || annotation.position.pageIndex + 1));
+      entry.frame.contentDocument?.querySelector<HTMLTextAreaElement>('textarea[data-question]')?.focus();
+    } catch (error) {
+      Services.prompt.alert(reader._window || Zotero.getMainWindow(), 'PaperLens 图片', error instanceof Error ? error.message : String(error));
+    }
+  }
+  const imageAnnotationListener = ({ reader, doc, params, append }: any) => {
+    if (reader.type !== 'pdf' || params.annotation?.type !== 'image') return;
+    const annotation = JSON.parse(JSON.stringify(params.annotation));
+    const button = doc.createElement('button');
+    button.type = 'button'; button.textContent = '解读图片';
+    button.title = '将图片添加到 PaperLens，输入问题后发送';
+    button.style.cssText = 'font-size:11px;padding:2px 6px;color:inherit;border:1px solid #7b93b4;border-radius:4px;background:transparent;cursor:pointer;';
+    button.addEventListener('click', (event: MouseEvent) => { event.stopPropagation(); void showImage(reader, annotation); });
+    append(button);
+  };
+  const imageContextListener = ({ reader, params, append }: any) => {
+    if (reader.type !== 'pdf' || params.ids?.length !== 1) return;
+    const annotation = reader._internalReader?._state.annotations.find((candidate: any) => candidate.id === params.ids[0]);
+    if (annotation?.type !== 'image') return;
+    append({ label: 'PaperLens：解读图片', onCommand: () => { void showImage(reader, JSON.parse(JSON.stringify(annotation))); } });
   };
 
   const plugin = {
@@ -405,9 +468,15 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
         src: info.rootURI + 'content/preferences.xhtml', image: info.rootURI + 'content/icon.svg' });
       Zotero.Reader.registerEventListener('renderTextSelectionPopup', selectionListener, info.id);
       Zotero.Reader.registerEventListener('renderToolbar', toolbarListener, info.id);
+      Zotero.Reader.registerEventListener('renderSidebarAnnotationHeader', imageAnnotationListener, info.id);
+      Zotero.Reader.registerEventListener('createAnnotationContextMenu', imageContextListener, info.id);
+      for (const reader of Zotero.Reader._readers) {
+        if (reader.type === 'pdf') registerWindowCapture(reader._iframe?.ownerDocument.defaultView || reader._window);
+      }
     },
     show,
     addWindow(win: any) {
+      registerWindowCapture(win);
       if (windows.has(win)) return;
       win.document.l10n?.addResourceIds(['paperlens.ftl']);
       const popup = win.document.getElementById('zotero-itemmenu');
@@ -453,7 +522,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
         menu.remove(); queryMenu.remove();
       });
     },
-    removeWindow(win: any) { windows.get(win)?.(); windows.delete(win); },
+    removeWindow(win: any) { windows.get(win)?.(); windows.delete(win); captureWindows.get(win)?.(); },
     mountPreferences(body: HTMLElement) {
       const doc = body.ownerDocument;
       const frame = doc.createElementNS(HTML, 'iframe') as HTMLIFrameElement;
@@ -483,8 +552,11 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       unregisterColumns?.();
       publicationSections.clear();
       translations.dispose();
+      for (const cleanup of captureWindows.values()) cleanup();
       Zotero.Reader.unregisterEventListener('renderTextSelectionPopup', selectionListener);
       Zotero.Reader.unregisterEventListener('renderToolbar', toolbarListener);
+      Zotero.Reader.unregisterEventListener('renderSidebarAnnotationHeader', imageAnnotationListener);
+      Zotero.Reader.unregisterEventListener('createAnnotationContextMenu', imageContextListener);
       for (const win of windows.keys()) plugin.removeWindow(win);
       for (const view of standalone.values()) view.cleanup();
       for (const view of views.values()) { view.unmount?.(); await view.controller.dispose(); view.frame.remove(); }

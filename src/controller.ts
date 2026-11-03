@@ -3,10 +3,12 @@ import { discardIncompleteAnswers } from './history';
 import { ANNOTATION_FORMAT, buildMessages, chunkBlocks, groupSummaries, OVERVIEW_MERGE, OVERVIEW_SEGMENT,
   overviewCoverage, overviewEvidence, overviewSynthesisMessages, sourceText, SYSTEM } from './reading/context';
 import { locateBlock } from './reading/position';
+import { MAX_IMAGES, validateImages } from './reading/images';
+import { renderPdfImage, selectPdfRegion } from './reading/pdf-images';
 import { activeProvider, DEFAULT_SETTINGS } from './settings';
 import { Storage } from './storage';
 import { extractSource, findReader, identityFor, navigateReader, openReader, readingCursor, readingPosition, saveNote } from './zotero-adapter';
-import type { Bridge, Depth, Message, Quote, Session, Settings, Source, Task, ViewState } from './types';
+import type { Bridge, Depth, ImageAttachment, Location, Message, Quote, Session, Settings, Source, Task, ViewState } from './types';
 
 const taskQuestions: Record<Task, string> = {
   chat: '', close: '请逐句解释这段原文，并分析它在论证中的作用和关联段落。',
@@ -23,13 +25,14 @@ export class ReaderController {
   reader: any;
   item: any;
   settings: Settings = { ...DEFAULT_SETTINGS };
-  state: ViewState = { title: 'PaperLens', identity: '', task: 'chat', messages: [], draft: '', depth: 'standard',
+  state: ViewState = { title: 'PaperLens', identity: '', task: 'chat', images: [], messages: [], draft: '', depth: 'standard',
     hints: true, model: '', providerID: DEFAULT_SETTINGS.activeProviderId, providerName: DEFAULT_SETTINGS.providers[0].name,
     providers: DEFAULT_SETTINGS.providers.map(({ id, name, baseURL, model }) => ({ id, name, baseURL, model })),
     configured: false, readable: false, loading: false, busy: false, models: [], modelsLoading: false,
     error: '', notice: '', sourceInfo: '', returnAvailable: false };
   private listeners = new Set<(state: ViewState) => void>();
   private abort?: AbortController;
+  private imageCapture?: AbortController;
   private loadID = 0;
   private loading?: Promise<void>;
   private previousLocation: any;
@@ -47,6 +50,12 @@ export class ReaderController {
       setTask: task => { this.state.task = task; if (this.session) this.session.task = task; if (task !== 'close') this.setActiveSource(); this.persistDraft(); this.emit(); },
       setDraft: text => { this.state.draft = text; if (this.session) this.session.draft = text; this.persistDraft(); },
       removeQuote: () => { this.state.quote = undefined; if (this.session) this.session.quote = undefined; this.persistDraft(); this.emit(); },
+      addImages: images => this.addImages(images), removeImage: id => {
+        this.state.images = this.state.images.filter(image => image.id !== id);
+        if (this.session) this.session.images = this.state.images;
+        this.persistDraft(); this.emit();
+      },
+      captureImage: () => this.captureImage(),
       setDepth: async depth => { this.settings = { ...await this.storage.getSettings(), depth }; await this.storage.saveSettings(this.settings); this.notifySettingsListeners(); this.notifyAll(); },
       send: (text, task) => this.send(text, task), retry: id => this.retry(id), stop: () => ReaderController.requests.get(this.state.identity)?.abort(),
       navigate: (id, messageID) => this.navigate(id, messageID), returnToReading: () => this.returnToReading(),
@@ -54,8 +63,8 @@ export class ReaderController {
       newConversation: async () => {
         if (ReaderController.requests.has(this.state.identity)) return;
         if (this.session) {
-          this.session.messages = []; this.session.draft = ''; this.session.quote = undefined;
-          this.state.quote = undefined; this.state.draft = ''; this.setActiveSource(); await this.storage.saveSession(this.session); this.notifyAll();
+          this.session.messages = []; this.session.draft = ''; this.session.quote = undefined; this.session.images = [];
+          this.state.quote = undefined; this.state.draft = ''; this.state.images = []; this.setActiveSource(); await this.storage.saveSession(this.session); this.notifyAll();
         }
       },
       refreshSource: () => this.load(this.item, this.reader, true), openSettings: () => Zotero.Utilities.Internal.openPreferences('paperlens-settings'),
@@ -75,7 +84,7 @@ export class ReaderController {
 
   private snapshot(): ViewState {
     const provider = activeProvider(this.settings);
-    return { ...this.state, messages: [...(this.session?.messages || [])],
+    return { ...this.state, images: [...(this.session?.images || [])], messages: [...(this.session?.messages || [])],
       depth: this.settings.depth, hints: this.settings.hints, model: provider.model,
       providerID: provider.id, providerName: provider.name,
       providers: this.settings.providers.map(({ id, name, baseURL, model }) => ({ id, name, baseURL, model })),
@@ -178,20 +187,22 @@ export class ReaderController {
       this.state.notice = '请打开一份本机 PDF 后使用 PaperLens。'; this.emit(); return;
     }
     if (!force && this.item?.id === item.id && (this.source || this.state.loading)) { this.reader = reader || this.reader; return; }
-    this.abort?.abort();
+    this.abort?.abort(); this.imageCapture?.abort();
     const id = ++this.loadID;
     this.item = item; this.reader = reader || findReader(this.doc, item.id); this.source = undefined; this.session = undefined;
     this.previousLocation = undefined;
-    this.state = { ...this.state, title: item.getField('title') || 'PDF', quote: undefined, draft: '', identity: identityFor(item), loading: true, busy: false, error: '', notice: '正在读取论文文字…', sourceInfo: '', returnAvailable: false, activeSourceID: undefined, activeMessageID: undefined };
+    this.state = { ...this.state, title: item.getField('title') || 'PDF', quote: undefined, images: [], draft: '', identity: identityFor(item), loading: true, busy: false, error: '', notice: '正在读取论文文字…', sourceInfo: '', returnAvailable: false, activeSourceID: undefined, activeMessageID: undefined };
     this.emit();
     try {
       const [session, settings] = await Promise.all([this.storage.session(identityFor(item)), this.storage.getSettings()]);
       if (id !== this.loadID || this.disposed) return;
       this.session = session; this.settings = settings;
-      this.state.task = session.task; this.state.quote = session.quote; this.state.draft = session.draft;
+      this.state.task = session.task; this.state.quote = session.quote; this.state.draft = session.draft; this.state.images = session.images || [];
       const source = await extractSource(item, this.storage, force);
       if (id !== this.loadID || this.disposed) return;
       this.source = source; this.state.title = source.title;
+      this.state.images = this.state.images.filter(image => !image.location || image.sourceVersion === source.version);
+      session.images = this.state.images;
       this.state.sourceInfo = `${source.pageCount} 页 · ${source.blocks.length} 段`;
       if (session.messages.some(m => m.sourceVersion && m.sourceVersion !== source.version)) {
         this.state.notice = 'PDF 已更新。旧解读仍保留，旧位置链接已停用，请重新分析。';
@@ -210,10 +221,60 @@ export class ReaderController {
     await this.storage.saveSession(this.session); this.emit();
   }
 
+  async addImages(images: ImageAttachment[]) {
+    if (!this.session || !this.source) throw new Error('请先打开一篇论文。');
+    if (ReaderController.requests.has(this.state.identity)) throw new Error('请等待当前回答结束后再添加图片。');
+    const next = [...(this.session.images || []), ...images];
+    validateImages(next);
+    this.session.images = next; this.state.images = next;
+    this.session.task = 'chat'; this.state.task = 'chat';
+    this.state.notice = '已添加图片，请使用支持图片输入的模型。';
+    await this.storage.saveSession(this.session); this.emit();
+  }
+
+  async selectImage(location: Location, reader: any, pageLabel?: string) {
+    await this.load(Zotero.Items.get(reader.itemID), reader);
+    if (!this.source || !this.session) throw new Error('请先等待论文加载完成。');
+    const session = this.session, version = this.source.version;
+    const image = await renderPdfImage(reader, location, pageLabel);
+    if (this.session !== session || this.disposed) return;
+    image.sourceVersion = version;
+    await this.addImages([image]);
+    this.state.quote = undefined; session.quote = undefined;
+    await this.storage.saveSession(session); this.emit();
+  }
+
+  async captureImage() {
+    if (!this.reader || !this.source || !this.session) throw new Error('请先打开一篇 PDF 论文。');
+    if (this.imageCapture || this.state.loading || ReaderController.requests.has(this.state.identity)) return;
+    if ((this.session.images?.length || 0) >= MAX_IMAGES) throw new Error(`一次最多添加 ${MAX_IMAGES} 张图片。`);
+    const abort = new (this.doc.defaultView as any).AbortController() as AbortController;
+    this.imageCapture = abort;
+    this.state.capturingImage = true;
+    this.state.error = '';
+    this.state.notice = '在 PDF 页面上拖动框选图片，按 Esc 取消。'; this.emit();
+    try {
+      const location = await selectPdfRegion(this.reader, abort.signal);
+      if (location && !abort.signal.aborted) {
+        const label = this.source.blocks.find(block => block.location.pageIndex === location.pageIndex)?.pageLabel;
+        await this.selectImage(location, this.reader, label);
+      } else { this.state.notice = ''; this.emit(); }
+    } catch (error) {
+      this.state.notice = ''; this.emit(); throw error;
+    } finally {
+      if (this.imageCapture === abort) { this.imageCapture = undefined; this.state.capturingImage = false; this.emit(); }
+    }
+  }
+
   async send(text: string, task: Task = this.state.task, retryMessage?: Message) {
     if (!this.source || !this.session || ReaderController.requests.has(this.state.identity)) return;
     if (task === 'verify' && !text.trim() && !this.state.quote) { this.fail(new Error('请输入要核对的主张，或在原文中选中结论。')); return; }
-    text = text.trim() || taskQuestions[task];
+    const retryUser = retryMessage && this.session.messages[this.session.messages.indexOf(retryMessage) - 1];
+    let images = task === 'chat' ? (retryUser ? retryUser.images || [] : this.session.images || []) : [];
+    if (images.some(image => image.location && image.sourceVersion !== this.source!.version)) {
+      this.fail(new Error('图片来自旧版 PDF，请重新框选图片。')); return;
+    }
+    text = text.trim() || (images.length ? '请结合论文上下文解释这些图片，说明图中内容、关键发现和适用范围。' : taskQuestions[task]);
     if (!text) return;
     const source = this.source, session = this.session, item = this.item;
     const abort = new (this.doc.defaultView as any).AbortController() as AbortController;
@@ -235,14 +296,16 @@ export class ReaderController {
         const index = session.messages.indexOf(retryMessage);
         const user = session.messages[index - 1];
         text = user.content; history = session.messages.slice(0, index - 1);
-        answer.quote = user.quote;
+        answer.quote = user.quote; images = user.images || [];
       } else {
         session.messages = discardIncompleteAnswers(session.messages, task);
         history = [...session.messages];
         const quote = task === 'overview' ? undefined : this.state.quote;
-        session.messages.push({ id: makeID(), role: 'user', content: text, quote, status: 'complete', task, createdAt: new Date().toISOString() });
+        session.messages.push({ id: makeID(), role: 'user', content: text, quote, ...(images.length ? { images } : {}),
+          sourceVersion: source.version, status: 'complete', task, createdAt: new Date().toISOString() });
         answer.quote = quote; session.messages.push(answer);
         this.state.draft = ''; session.draft = '';
+        if (task === 'chat') { this.state.images = []; session.images = []; }
       }
       const response = answer;
       Object.assign(response, { content: '', status: 'streaming', error: undefined, noteID: undefined, model: provider.model,
@@ -299,7 +362,7 @@ export class ReaderController {
         } catch (error) { response.content = partial; throw error; }
         if (!fullTextAnnotation) response.range = `全文 · ${source.pageCount} 页 · ${chunks.length} 部分`;
       } else {
-        const request = buildMessages(source, task === 'overview' ? [] : history, text, response.quote, task, settings.depth, settings.contextChars);
+        const request = buildMessages(source, task === 'overview' ? [] : history, text, response.quote, task, settings.depth, settings.contextChars, images);
         response.sourceIds = request.blocks.map(b => b.id); response.range = request.range;
         await this.ai.stream(provider, request.messages, chunk => { response.content += chunk; this.emit(); }, abort.signal);
       }
@@ -309,6 +372,7 @@ export class ReaderController {
       if (answer) {
         answer.status = abort.signal.aborted ? 'stopped' : 'error';
         answer.error = abort.signal.aborted ? '已停止，已保留收到的内容。' : (error instanceof Error ? error.message : '请求失败，请重试。');
+        if (!abort.signal.aborted && images.length) answer.error += '\n请确认当前服务商和模型支持图片输入；可从顶部切换模型后重试，图片已保留在本条问题中。';
       } else if (isCurrent()) this.fail(error);
     } finally {
       try { if (answer) await this.storage.saveSession(session); } catch (error) { if (isCurrent()) this.fail(error); }
@@ -331,9 +395,13 @@ export class ReaderController {
     if (message && message.sourceVersion !== this.source?.version) throw new Error('该解读来自旧版 PDF，请重新分析。');
     if (await this.item.attachmentHash !== this.source?.version) throw new Error('PDF 已更新，请重新读取原文。');
     const block = this.source?.blocks.find(b => b.id === id);
-    if (id !== 'selection' && (!block || (message && !message.sourceIds?.includes(id)))) return;
+    const image = id.startsWith('image-') ? [...(this.session?.images || []),
+      ...(this.session?.messages.slice(0, message ? this.session.messages.indexOf(message) + 1 : undefined) || []).flatMap(candidate => candidate.images || [])]
+      .find(candidate => candidate.id === id.slice(6)) : undefined;
+    if (image?.location && image.sourceVersion !== this.source?.version) throw new Error('图片来自旧版 PDF，请重新框选。');
+    if (id !== 'selection' && !image && (!block || (message && !message.sourceIds?.includes(id)))) return;
     this.reader ||= findReader(this.doc, this.item.id) || await openReader(this.item.id);
-    const location = id === 'selection' ? this.state.quote?.location : block?.location;
+    const location = image?.location || (id === 'selection' ? this.state.quote?.location : block?.location);
     if (!location) return;
     this.previousLocation ||= readingPosition(this.reader);
     await navigateReader(this.reader, location.rects?.length ? { position: location } : { pageIndex: location.pageIndex });
@@ -354,12 +422,16 @@ export class ReaderController {
     const index = this.session!.messages.indexOf(message);
     ReaderController.noteSaves.add(message.id);
     try {
-      message.noteID = await saveNote(this.item, message, this.session!.messages[index - 1], this.source);
+      const question = this.session!.messages[index - 1];
+      const images = this.session!.messages.slice(0, index).flatMap(candidate => candidate.images || [])
+        .filter(image => (!image.location || image.sourceVersion === this.source!.version) &&
+          (question?.images?.some(candidate => candidate.id === image.id) || message.content.includes(`#image-${image.id}`)));
+      message.noteID = await saveNote(this.item, message, question, this.source, images);
       await this.storage.saveSession(this.session!); this.notifyAll();
     } finally { ReaderController.noteSaves.delete(message.id); }
   }
   async dispose() {
-    this.disposed = true; this.abort?.abort(); clearTimeout(this.saveTimer); clearInterval(this.syncTimer); this.listeners.clear();
+    this.disposed = true; this.abort?.abort(); this.imageCapture?.abort(); clearTimeout(this.saveTimer); clearInterval(this.syncTimer); this.listeners.clear();
     if (this.session) await this.storage.saveSession(this.session);
   }
 }

@@ -3,6 +3,10 @@ export type Depth = 'simple' | 'standard' | 'deep';
 export type Status = 'streaming' | 'complete' | 'stopped' | 'error';
 export interface Location { pageIndex: number; rects?: number[][]; annotationID?: string }
 export interface Quote { text: string; pageLabel: string; location: Location; blockIds?: string[] }
+export interface ImageAttachment {
+  id: string; name: string; dataURL: string; width: number; height: number;
+  pageLabel?: string; location?: Location; sourceVersion?: string;
+}
 export interface Block { id: string; text: string; section: string; kind: string; pageLabel: string; location: Location; locations?: Location[]; excerpt?: boolean }
 export interface Source { identity: string; version: string; title: string; itemID: number; blocks: Block[]; pageCount: number }
 export interface AIConnection { baseURL: string; apiKey: string; model: string }
@@ -29,14 +33,14 @@ export interface TranslationBridge {
 }
 export interface Message {
   id: string; role: 'user' | 'assistant'; content: string; status: Status; task: Task;
-  quote?: Quote; sourceIds?: string[]; sourceVersion?: string; model?: string; provider?: string;
+  quote?: Quote; images?: ImageAttachment[]; sourceIds?: string[]; sourceVersion?: string; model?: string; provider?: string;
   createdAt: string; error?: string; noteID?: number; range?: string;
 }
-export interface Session { identity: string; messages: Message[]; draft: string; task: Task; quote?: Quote }
+export interface Session { identity: string; messages: Message[]; draft: string; task: Task; quote?: Quote; images?: ImageAttachment[] }
 export interface ViewState {
-  title: string; identity: string; task: Task; quote?: Quote; messages: Message[]; draft: string;
+  title: string; identity: string; task: Task; quote?: Quote; images: ImageAttachment[]; messages: Message[]; draft: string;
   depth: Depth; hints: boolean; model: string; providerID: string; providerName: string; providers: ProviderSummary[];
-  configured: boolean; readable: boolean; loading: boolean; busy: boolean;
+  configured: boolean; readable: boolean; loading: boolean; busy: boolean; capturingImage?: boolean;
   models: string[]; modelsLoading: boolean;
   activeSourceID?: string; activeMessageID?: string;
   error: string; notice: string; sourceInfo: string; returnAvailable: boolean;
@@ -46,6 +50,7 @@ export interface Bridge {
   closePanel?: () => void;
   subscribe(listener: (state: ViewState) => void): () => void;
   setTask(task: Task): void; setDraft(text: string): void; removeQuote(): void;
+  addImages(images: ImageAttachment[]): Promise<void>; removeImage(id: string): void; captureImage(): Promise<void>;
   setDepth(depth: Depth): Promise<void>;
   send(text: string, task?: Task): Promise<void>; retry(id: string): Promise<void>; stop(): void;
   navigate(id: string, messageID?: string): Promise<void>; returnToReading(): Promise<void>;
@@ -57,4 +62,4 @@ export interface Bridge {
   models(provider: AIConnection): Promise<string[]>; testConnection(provider: AIConnection): Promise<string>;
   copy(text: string): void;
 }
-export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string }
+export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string; images?: ImageAttachment[] }

@@ -1,6 +1,6 @@
 import { normalizeStructured } from './reading/normalize';
 import type { ReadingCursor } from './reading/position';
-import type { Location, Message, Source } from './types';
+import type { ImageAttachment, Location, Message, Source } from './types';
 import type { Storage } from './storage';
 
 export const identityFor = (item: any) => `${item.libraryID}_${item.key}`;
@@ -94,23 +94,30 @@ export function pageLink(item: any, location: Location) {
 
 const escape = (text: string) => text.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 
-export async function saveNote(item: any, message: Message, question: Message | undefined, source: Source) {
+export async function saveNote(item: any, message: Message, question: Message | undefined, source: Source,
+  images: ImageAttachment[] = question?.images || []) {
   const note = new Zotero.Item('note');
   note.libraryID = item.libraryID;
   if (item.parentID) note.parentID = item.parentID;
   const references = source.blocks.filter(block => message.sourceIds?.includes(block.id));
   const citedIDs = new Set([...message.content.matchAll(/#source-(b\d+)/g)].map(match => match[1]));
   const citations = references.filter(block => citedIDs.has(block.id));
-  const text = escape(message.content).replace(/\[([^\]]+)\]\(#source-(b\d+)\)/g, (_match, label, id) => {
+  const text = escape(message.content).replace(/\[([^\]]+)\]\(#image-([\w-]+)\)/g, (_match, label, id) => {
+    const image = images.find(candidate => candidate.id === id);
+    return image?.location ? `<a href="${escape(pageLink(item, image.location))}">${label}</a>` : label;
+  }).replace(/\[([^\]]+)\]\(#source-(b\d+)\)/g, (_match, label, id) => {
     const block = citations.find(b => b.id === id);
     return block ? `<a href="${escape(pageLink(item, block.location))}">${label}</a>` : label;
   });
   note.setNote(`<div data-schema-version="9"><h1>PaperLens · ${escape(source.title)}</h1>` +
     (question ? `<h2>问题</h2><p>${escape(question.content)}</p>` : '') +
     (message.quote ? `<blockquote>${escape(message.quote.text)}</blockquote>` : '') +
+    (images.length ? `<h2>图片来源</h2>${images.map(image => `<p>${image.location
+      ? `<a href="${escape(pageLink(item, image.location))}">${escape(image.name)}</a>`
+      : `${escape(image.name)}（用户图片，保存在本机 PaperLens 阅读记录中）`}</p>`).join('')}` : '') +
     `<h2>解读</h2><p>${text.replace(/\n/g, '<br/>')}</p>` +
     (citations.length ? `<h2>原文依据</h2>${citations.map(b => `<p><a href="${escape(pageLink(item, b.location))}">第${escape(b.pageLabel)}页 · ${b.id}</a>：${escape(b.text.slice(0, 550))}</p>`).join('')}` : '') +
-    `<p><a href="${escape(pageLink(item, { pageIndex: message.quote?.location.pageIndex || 0 }))}">打开来源 PDF</a></p>` +
+    `<p><a href="${escape(pageLink(item, { pageIndex: message.quote?.location.pageIndex ?? images.find(image => image.location)?.location?.pageIndex ?? 0 }))}">打开来源 PDF</a></p>` +
     `<p>${message.provider ? `服务商：${escape(message.provider)} · ` : ''}模型：${escape(message.model || '')} · ${escape(message.createdAt)} · ${escape(message.range || '')}</p></div>`);
   await note.saveTx();
   return note.id as number;
