@@ -10,9 +10,9 @@ const RANK_LABELS: Record<string, string> = {
   cug: '中国地质大学分级', cpu: '中国药科大学分级', hzau: '华中农业大学',
 };
 
-export function easyScholarRankName(key: string, fallback = ''): string {
+export function easyScholarRankName(key: string, fallback = '', useRawKey = false): string {
   const normalized = key.toLowerCase();
   const name = fallback.trim();
   return RANK_LABELS[normalized]
-    || (name && name.toLowerCase() !== normalized ? name : `其他等级数据集（${key}）`);
+    || (name && name.toLowerCase() !== normalized ? name : useRawKey ? key : `其他等级数据集（${key}）`);
 }

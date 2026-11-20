@@ -9,6 +9,7 @@ import {
 } from './paper-metadata';
 import { applyPublicationLookup, lookupPublication } from './paper-online';
 import { registerPublicationColumns } from './publication-columns';
+import { registerPublicationFilter } from './publication-filter';
 import { PublicationImportQueue } from './publication-import';
 import { Storage } from './storage';
 import { TranslationPopups } from './translation/popup';
@@ -481,6 +482,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       win.document.l10n?.addResourceIds(['paperlens.ftl']);
       const popup = win.document.getElementById('zotero-itemmenu');
       if (!popup) return;
+      const removePublicationFilter = registerPublicationFilter(win);
       const menu = win.document.createXULElement('menuitem');
       menu.id = 'paperlens-open-reader'; menu.setAttribute('label', '使用 PaperLens 阅读');
       const queryMenu = win.document.createXULElement('menuitem');
@@ -518,6 +520,7 @@ export function createPlugin(info: { id: string; version: string; rootURI: strin
       });
       popup.append(menu, queryMenu); popup.addEventListener('popupshowing', update);
       windows.set(win, () => {
+        removePublicationFilter();
         popup.removeEventListener('popupshowing', update);
         menu.remove(); queryMenu.remove();
       });

@@ -240,18 +240,39 @@ export function isEasyScholarCoreKey(key: string): boolean {
   return EASYSCHOLAR_CORE_KEYS.has(key.toLowerCase());
 }
 
+function parseEasyScholarTag(tag: string): EasyScholarRank | null {
+  if (!tag.startsWith(EASYSCHOLAR_TAG_PREFIX)) return null;
+  const content = tag.slice(EASYSCHOLAR_TAG_PREFIX.length);
+  const separator = content.indexOf('=');
+  if (separator < 1) return null;
+  const key = content.slice(0, separator);
+  return { key, name: easyScholarRankName(key), value: content.slice(separator + 1) };
+}
+
+export function publicationRankTag(tag: string, zh: boolean): { group: string; label: string; value: string } | null {
+  if (!tag.startsWith(TAG_PREFIX)) return null;
+  const value = tag.slice(TAG_PREFIX.length);
+  if (value.startsWith('JCR-') && QUARTILE_VALUES.has(value)) {
+    return { group: 'JCR', label: 'JCR', value: value.slice(4) };
+  }
+  if (value.startsWith('CAS-') && QUARTILE_VALUES.has(value)) {
+    return { group: 'CAS', label: zh ? '中科院分区' : 'CAS quartile', value: zh ? `${value.slice(4)}区` : `Q${value.slice(4)}` };
+  }
+  if (value.startsWith('CCF-') && CCF_VALUES.has(value.slice(4))) {
+    return { group: 'CCF', label: 'CCF', value: value.slice(4) };
+  }
+  if (value.startsWith('CORE-') && CORE_VALUES.has(value.slice(5))) {
+    return { group: 'CORE', label: 'CORE', value: value.slice(5) };
+  }
+  const rank = parseEasyScholarTag(tag);
+  return rank?.value ? { group: `easy:${rank.key.toLowerCase()}`, label: zh ? easyScholarRankName(rank.key, '', true) : rank.key, value: rank.value } : null;
+}
+
 export function getEasyScholarRanks(item: any): EasyScholarRank[] {
   const paper = resolvePaperItem(item);
   if (!paper) return [];
   return paper.getTags()
-    .map((entry: any) => String(entry.tag || ''))
-    .filter((tag: string) => tag.startsWith(EASYSCHOLAR_TAG_PREFIX))
-    .map((tag: string) => {
-      const value = tag.slice(EASYSCHOLAR_TAG_PREFIX.length);
-      const index = value.indexOf('=');
-      const key = index > 0 ? value.slice(0, index) : '';
-      return key ? { key, name: easyScholarRankName(key), value: value.slice(index + 1) } : null;
-    })
+    .map((entry: { tag: string }) => parseEasyScholarTag(entry.tag || ''))
     .filter((value: EasyScholarRank | null): value is EasyScholarRank => Boolean(value));
 }
 

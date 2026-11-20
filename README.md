@@ -6,7 +6,7 @@
 
 正文与阅读任务并排显示，可直接提问，也可切换到注解、概览或证据核对。本文配图均来自原生 Zotero 实机界面，局部图仅裁切到相关区域；配置页中的密钥保持隐藏。截图中的服务商与模型为使用示例，可以替换成自己的 OpenAI 兼容服务、中转站或本地模型。
 
-当前源码版本为 **0.3.14**，支持论文图片框选、上传和粘贴问答，结合图注与正文连续追问；可用 **Alt+A** 或 **Ctrl+Alt+A** 快速框选截图，阅读侧栏采用紧凑布局。正式安装包可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载，以发布页标注的版本为准；也可从源码构建。要求 **Zotero 10.0.6–10.x**。已在 Windows 的 Zotero 10.0.7 中验证；macOS、Linux 和其他 Zotero 版本尚未实机验证。
+当前源码版本为 **0.3.15**，支持在文献库工具栏按期刊分区、会议等级和 EasyScholar 数据集筛选论文。支持论文图片框选、上传和粘贴问答，可用 **Alt+A** 或 **Ctrl+Alt+A** 快速框选。正式安装包可从 [Releases](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest) 下载，以发布页标注的版本为准，也可从源码构建。要求 **Zotero 10.0.6–10.x**。
 
 **快速导航：** [安装与开始阅读](#安装与开始阅读) · [AI 服务配置](#ai-服务配置) · [图片问答](#图片问答) · [阅读任务](#阅读任务) · [期刊与分区](#期刊与分区) · [选文翻译浮窗](#选文翻译浮窗) · [数据与隐私](#数据与隐私) · [构建与扩展](#构建与扩展)
 
@@ -27,7 +27,7 @@
 
 ## 安装与开始阅读
 
-1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载对应版本的 XPI。从当前源码构建时，文件为 `dist/paperlens-zotero-0.3.14.xpi`。
+1. 打开 [最新发布版本](https://github.com/DreamPerday/PaperLens-Zotero/releases/latest)，在 **Assets** 中下载对应版本的 XPI。从当前源码构建时，文件为 `dist/paperlens-zotero-0.3.15.xpi`。
 2. 打开 Zotero → **工具 → 插件**，点击齿轮 → **从文件安装插件**，选择此 XPI。
 3. 打开一份本机 PDF，点击阅读器工具栏的 **PaperLens**，或右侧 PaperLens 图标。
 4. 在侧栏的 **设置** 中添加服务商，并填写各自的 **显示名称、Base URL、API Key、模型 ID**。可以保存多个服务商；从 Zotero 设置左侧的 **PaperLens** 也可以进入。
@@ -89,6 +89,8 @@
 选中论文条目后，Zotero **信息** 区会出现 **期刊 / 出版物** 和 **JCR / 中科院分区** 两行。期刊直接写入 Zotero 标准出版字段；会议论文、图书章节和预印本会使用对应出版物字段。
 
 第三条 **CCF / CORE 等级** 展示期刊或会议的 CCF 等级，以及会议的 CORE 等级。分区和等级写入条目标签，例如 `PaperLens/JCR-Q1`、`PaperLens/CAS-2`、`PaperLens/CCF-A`、`PaperLens/CORE-A*`，可以在 Zotero 标签区筛选和同步。编辑时可输入 `Q1`、`中科院 1区`、`CCF-A` 或 `CORE-A*`，留空可清除。标签名称保持纯文字，不添加图案前缀；插件会直接设置 Zotero 标签颜色。
+
+文献库搜索框旁的 **等级筛选** 菜单可以直接筛选当前文献列表。选择一个等级体系，再选等级，例如 **JCR → Q1**。同一体系切换等级时会替换原选项，不同体系可叠加，列表仅保留同时满足所选条件的条目。**清除等级筛选** 会保留快速搜索和普通标签条件。菜单使用文献库中已保存的等级，查询并写入新等级后，重新打开菜单即可看到对应选项。
 
 以下配图来自 Zotero 原生界面截图，展示条目详情中的分区和会议等级徽标。
 
@@ -178,7 +180,7 @@ npm test
 npm run build
 ```
 
-构建只打包 `addon/` 与编译后的运行资源，当前产物为 `dist/paperlens-zotero-0.3.14.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
+构建只打包 `addon/` 与编译后的运行资源，当前产物为 `dist/paperlens-zotero-0.3.15.xpi`。KaTeX 样式、字体、精简离线词典和 CCF/CORE 榜单随安装包提供，界面脚本与样式使用版本化文件名，避免升级后沿用旧样式。开发脚本、测试库、凭据和阅读数据均不进入 XPI。
 
 | 文件 | 负责的能力 |
 | --- | --- |
